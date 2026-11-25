@@ -1,0 +1,2824 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工程專案時程規劃與互動式甘特圖產生器</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 FontAwesome 圖示 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter & Noto Sans TC -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans TC', 'sans-serif'],
+                    },
+                    colors: {
+                        slate: {
+                            850: '#172033',
+                            900: '#0f172a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            background-color: #f1f5f9;
+            color: #1e293b;
+            user-select: none; /* 避免拖曳甘特圖時誤選文字 */
+        }
+
+        input, select, textarea {
+            user-select: text;
+        }
+
+        /* 自定義細緻捲軸 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #e2e8f0;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
+        /* 自訂顏色選擇器外觀 */
+        input[type="color"].stage-color-picker {
+            -webkit-appearance: none;
+            appearance: none;
+            border: none;
+            padding: 0;
+            background: transparent;
+            cursor: pointer;
+        }
+        input[type="color"].stage-color-picker::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        input[type="color"].stage-color-picker::-webkit-color-swatch {
+            border: 2px solid rgba(255, 255, 255, 0.9);
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+        }
+
+        /* 甘特圖時間條樣式與拖曳手把 */
+        .gantt-bar {
+            transition: box-shadow 0.15s ease, filter 0.15s ease;
+        }
+        .gantt-bar:hover {
+            filter: brightness(1.06);
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+        }
+        .gantt-bar.dragging {
+            opacity: 0.92;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.32);
+            z-index: 35;
+            cursor: grabbing !important;
+        }
+
+        /* 超出契約竣工線的斜紋警示覆蓋層 */
+        .overdue-overlay {
+            background-image: repeating-linear-gradient(
+                -45deg,
+                rgba(220, 38, 38, 0.85),
+                rgba(220, 38, 38, 0.85) 5px,
+                rgba(153, 27, 27, 0.95) 5px,
+                rgba(153, 27, 27, 0.95) 10px
+            );
+            border-left: 2px solid #fef2f2;
+        }
+
+        .resize-handle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 9px;
+            cursor: ew-resize;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.15s ease, background-color 0.15s ease;
+            z-index: 15;
+        }
+        .gantt-bar:hover .resize-handle,
+        .gantt-bar.dragging .resize-handle {
+            opacity: 1;
+        }
+        .resize-handle:hover {
+            background-color: rgba(255, 255, 255, 0.35);
+        }
+        .resize-handle::after {
+            content: '';
+            width: 2px;
+            height: 12px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 1px;
+        }
+        .resize-left {
+            left: 0;
+            border-top-left-radius: 0.375rem;
+            border-bottom-left-radius: 0.375rem;
+        }
+        .resize-right {
+            right: 0;
+            border-top-right-radius: 0.375rem;
+            border-bottom-right-radius: 0.375rem;
+        }
+
+        /* 週末底紋 */
+        .weekend-bg {
+            background-image: repeating-linear-gradient(
+                -45deg,
+                rgba(226, 232, 240, 0.5),
+                rgba(226, 232, 240, 0.5) 4px,
+                rgba(241, 245, 249, 0.5) 4px,
+                rgba(241, 245, 249, 0.5) 8px
+            );
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- 頂部導覽列 -->
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-40 border-b border-slate-800">
+        <div class="max-w-[1640px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-inner border border-blue-400/30">
+                    <i class="fa-solid fa-bars-staggered text-lg text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-base sm:text-xl font-bold tracking-wide flex items-center gap-2">
+                        工程專案時程規劃與互動式甘特圖產生器
+                        <span class="hidden md:inline-block text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2.5 py-0.5 rounded-full">PMO 專業版</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">支援決標日與契約工期控制、四階段自訂色票、日/週/月尺度、拖曳微調與無裁切匯出</p>
+                </div>
+            </div>
+
+            <!-- 範本載入與匯出操作區 -->
+            <div class="flex flex-wrap items-center gap-2">
+                <!-- 範本快速切換群組 -->
+                <div class="flex items-center bg-slate-800/90 p-1 rounded-lg border border-slate-700 gap-1">
+                    <span class="text-[11px] font-semibold text-slate-400 px-2 hidden xl:inline">
+                        <i class="fa-solid fa-layer-group text-amber-400 mr-1"></i>工程範本：
+                    </span>
+                    <button onclick="loadTemplatePreset('short')" class="px-2.5 py-1.5 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold rounded-md transition flex items-center gap-1" title="載入 90 天中小型機房/單一系統汰換工程範本">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>短 90天
+                    </button>
+                    <button onclick="loadTemplatePreset('medium')" class="px-2.5 py-1.5 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold rounded-md transition flex items-center gap-1" title="載入 120 天標準企業機房/弱電監控統包範本">
+                        <span class="w-2 h-2 rounded-full bg-blue-400"></span>中 120天
+                    </button>
+                    <button onclick="loadTemplatePreset('long')" class="px-2.5 py-1.5 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold rounded-md transition flex items-center gap-1" title="載入 150 天大型新建機房/長交期進口設備範本">
+                        <span class="w-2 h-2 rounded-full bg-purple-400"></span>長 150天
+                    </button>
+                </div>
+
+                <!-- 手動匯入 WBS 與備份群組 -->
+                <button onclick="openImportModal()" class="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs sm:text-sm font-bold rounded-lg shadow transition flex items-center gap-1.5" title="支援從 CSV、Excel 複製貼上或 JSON 專案檔匯入 WBS">
+                    <i class="fa-solid fa-file-import"></i>
+                    <span>匯入 WBS</span>
+                </button>
+
+                <button onclick="exportProjectJson()" class="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition flex items-center gap-1.5" title="下載完整專案 JSON 備份檔">
+                    <i class="fa-solid fa-file-code text-sky-400"></i>
+                    <span class="hidden lg:inline">備份 JSON</span>
+                </button>
+
+                <button onclick="resetToDefaultStorage()" class="px-2.5 py-2 bg-slate-800 hover:bg-rose-900/60 text-slate-300 hover:text-rose-200 text-xs font-medium rounded-lg border border-slate-700 transition flex items-center gap-1.5" title="清除瀏覽器快取並重置為預設值">
+                    <i class="fa-solid fa-rotate-left"></i>
+                    <span class="hidden sm:inline">重置</span>
+                </button>
+
+                <div class="h-6 w-[1px] bg-slate-700 hidden sm:block"></div>
+
+                <button id="exportPngBtn" onclick="exportChart('png')" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-xs sm:text-sm font-semibold rounded-lg shadow transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-file-image"></i>
+                    <span>匯出 PNG</span>
+                </button>
+                <button id="exportJpgBtn" onclick="exportChart('jpeg')" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-xs sm:text-sm font-semibold rounded-lg shadow transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-download"></i>
+                    <span>匯出 JPG</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主內容區 -->
+    <main class="flex-1 max-w-[1640px] w-full mx-auto px-4 sm:px-6 py-5 space-y-5">
+
+        <!-- 1. 專案契約參數與階段色票設定區 -->
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5 space-y-4">
+            <!-- 上排：專案基本參數與 KPI 儀表板 -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+                <!-- 專案名稱 -->
+                <div class="lg:col-span-3">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                        <i class="fa-solid fa-diagram-project text-blue-600 mr-1"></i>專案名稱
+                    </label>
+                    <input type="text" id="projectName" value="企業核心機房建置與系統整合工程" oninput="onProjectParamChange()"
+                        class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition">
+                </div>
+
+                <!-- 決標日 -->
+                <div class="sm:col-span-4 lg:col-span-2">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                        <span><i class="fa-regular fa-calendar-check text-blue-600 mr-1"></i>決標日</span>
+                        <span id="projectStartDateHint" class="text-[11px] font-mono font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">開工(次日): 2026-11-24</span>
+                    </label>
+                    <input type="date" id="awardDate" onchange="onAwardDateChange()"
+                        class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition">
+                </div>
+
+                <!-- 契約工期天數 -->
+                <div class="sm:col-span-4 lg:col-span-2">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                        <i class="fa-solid fa-flag-checkered text-rose-600 mr-1"></i>契約工期 (<span id="contractUnitLabel">日曆天</span>)
+                    </label>
+                    <div class="relative">
+                        <input type="number" id="contractDuration" min="5" max="1825" value="120" onchange="onContractDurationChange()"
+                            class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition">
+                        <span class="absolute right-3 top-2 text-xs font-semibold text-slate-400">天</span>
+                    </div>
+                </div>
+
+                <!-- 工期計算模式 -->
+                <div class="sm:col-span-4 lg:col-span-2">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                        <i class="fa-solid fa-clock-rotate-left text-blue-600 mr-1"></i>計算基準
+                    </label>
+                    <div class="grid grid-cols-2 bg-slate-100 p-1 rounded-lg border border-slate-200">
+                        <button type="button" id="modeCalendarBtn" onclick="setDayMode('calendar')"
+                            class="py-1.5 px-2 text-xs font-semibold rounded-md transition bg-white text-blue-700 shadow-sm">
+                            日曆天
+                        </button>
+                        <button type="button" id="modeWorkingBtn" onclick="setDayMode('working')"
+                            class="py-1.5 px-2 text-xs font-semibold rounded-md transition text-slate-600 hover:text-slate-900">
+                            工作天
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 專案工期 KPI 摘要卡 -->
+                <div class="lg:col-span-3 grid grid-cols-2 gap-2 bg-slate-900 text-white p-2.5 rounded-xl border border-slate-800">
+                    <div class="border-r border-slate-700 pr-2">
+                        <div class="text-[11px] text-rose-300 font-medium flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>契約竣工日
+                        </div>
+                        <div id="summaryContractEndDate" class="text-xs sm:text-sm font-mono font-bold text-white mt-0.5">2027-03-22</div>
+                    </div>
+                    <div class="pl-1">
+                        <div class="text-[11px] text-slate-400 font-medium">預估實際完工</div>
+                        <div id="summaryActualEndDate" class="text-xs sm:text-sm font-mono font-bold text-emerald-400 mt-0.5">2027-03-22</div>
+                        <div id="summaryScheduleStatus" class="text-[10px] text-emerald-300/90 mt-0.5 truncate">符合契約期限</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 下排：階段分類與自訂顏色設定列 -->
+            <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2 text-xs font-bold text-slate-600">
+                    <i class="fa-solid fa-palette text-indigo-600"></i>
+                    <span>階段分類與色票設定 (點擊色塊即時更換顏色)：</span>
+                </div>
+                <div id="stageColorConfigList" class="flex flex-wrap items-center gap-2.5">
+                    <!-- 由 JavaScript 動態渲染 4 個階段顏色選擇器 -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. 專案範疇與 WBS 編輯器 -->
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="px-4 sm:px-5 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-6 bg-blue-600 rounded-full"></span>
+                    <h2 class="text-base font-bold text-slate-800">專案範疇與工作分解結構 (WBS) 編輯器</h2>
+                    <span id="taskCountBadge" class="text-xs font-semibold bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full">15 項工項</span>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="autoScheduleByLogic()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold rounded-lg shadow-sm transition flex items-center gap-1.5" title="根據前置工項相依性與階段邏輯自動重算合理時程">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span>依邏輯自動順排時程</span>
+                    </button>
+                    <button onclick="addNewTask()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-semibold rounded-lg shadow-sm transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>新增 WBS 工項</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- WBS 表格容器 -->
+            <div class="overflow-x-auto max-h-[380px] overflow-y-auto">
+                <table class="w-full text-left border-collapse min-w-[1020px]">
+                    <thead class="bg-slate-100 text-slate-600 text-xs uppercase font-semibold sticky top-0 z-10 border-b border-slate-200">
+                        <tr>
+                            <th class="py-2.5 px-3 w-12 text-center">項次</th>
+                            <th class="py-2.5 px-3 min-w-[230px]">WBS 工項名稱</th>
+                            <th class="py-2.5 px-3 w-44">專案階段分類</th>
+                            <th class="py-2.5 px-3 w-36">開始日期</th>
+                            <th class="py-2.5 px-3 w-24 text-center">工期天數</th>
+                            <th class="py-2.5 px-3 w-36">結束日期</th>
+                            <th class="py-2.5 px-3 w-48">前置工項 (相依性)</th>
+                            <th class="py-2.5 px-3 w-28 text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="wbsTableBody" class="divide-y divide-slate-200">
+                        <!-- 由 JavaScript 動態渲染 -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 3. 互動式可手動調整甘特圖 -->
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <!-- 甘特圖工具列 -->
+            <div class="px-4 sm:px-5 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-6 bg-emerald-600 rounded-full"></span>
+                        <h2 class="text-base font-bold text-slate-800">互動式專案時程甘特圖</h2>
+                    </div>
+                    <span class="text-xs text-slate-500 bg-white px-2.5 py-1 rounded-md border border-slate-200 hidden xl:flex items-center gap-1.5">
+                        <i class="fa-solid fa-hand-pointer text-blue-600"></i>
+                        提示：可直接<strong class="text-slate-700">拖曳時間條</strong>移動排程，或拉動<strong class="text-slate-700">左右邊緣手把</strong>增減天數；右側精準切齊<strong class="text-rose-600">契約竣工線</strong>
+                    </span>
+                </div>
+
+                <!-- 顯示控制組：字體大小 (16px/20px/26px) + 時間尺度 (日/週/月) -->
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- 字體大小切換按鈕組 -->
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-xs font-semibold text-slate-500">
+                            <i class="fa-solid fa-text-height text-indigo-600 mr-1"></i>字體大小：
+                        </span>
+                        <div class="flex items-center bg-slate-200/90 p-1 rounded-lg text-xs font-bold">
+                            <button id="fontSize16Btn" onclick="setFontSize(16)" class="px-2.5 py-1 rounded-md bg-white text-indigo-700 shadow-sm transition" title="標準 16px 字體">
+                                16px
+                            </button>
+                            <button id="fontSize20Btn" onclick="setFontSize(20)" class="px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition" title="放大 20px 字體">
+                                20px
+                            </button>
+                            <button id="fontSize26Btn" onclick="setFontSize(26)" class="px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition" title="簡報特大 26px 字體">
+                                26px
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="h-5 w-[1px] bg-slate-300 hidden sm:block"></div>
+
+                    <!-- 時間尺度切換按鈕組 (日 / 週 / 月) -->
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-xs font-semibold text-slate-500">時間尺度：</span>
+                        <div class="flex items-center bg-slate-200/90 p-1 rounded-lg text-xs font-bold">
+                            <button id="scaleDayBtn" onclick="setTimeScale('day')" class="px-3 py-1 rounded-md text-slate-600 hover:text-slate-900 transition">
+                                日 (Day)
+                            </button>
+                            <button id="scaleWeekBtn" onclick="setTimeScale('week')" class="px-3 py-1 rounded-md bg-white text-blue-700 shadow-sm transition">
+                                週 (Week)
+                            </button>
+                            <button id="scaleMonthBtn" onclick="setTimeScale('month')" class="px-3 py-1 rounded-md text-slate-600 hover:text-slate-900 transition">
+                                月 (Month)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 甘特圖匯出目標容器 (嚴格切齊契約竣工線) -->
+            <div id="ganttExportWrapper" class="bg-white">
+                <!-- 匯出時顯示的專案表頭資訊 -->
+                <div id="ganttChartHeaderBanner" class="px-5 py-3.5 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-800 text-white flex flex-wrap items-center justify-between gap-4 border-b border-slate-700">
+                    <div>
+                        <div class="text-[11px] uppercase tracking-widest text-blue-400 font-semibold">PROJECT MASTER SCHEDULE / 專案時程總表</div>
+                        <h3 id="bannerProjectName" class="text-lg font-bold tracking-wide mt-0.5">企業核心機房建置與系統整合工程</h3>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-4 sm:gap-5 text-xs">
+                        <div>
+                            <span class="text-slate-400 block">決標日 / 開工(次日)</span>
+                            <span id="bannerAwardDate" class="font-mono font-bold text-sm text-white">2026-11-23 / 11-24</span>
+                        </div>
+                        <div class="h-7 w-[1px] bg-slate-700"></div>
+                        <div>
+                            <span class="text-slate-400 block">契約工期</span>
+                            <span id="bannerContractDays" class="font-mono font-bold text-sm text-amber-400">120 日曆天</span>
+                        </div>
+                        <div class="h-7 w-[1px] bg-slate-700"></div>
+                        <div>
+                            <span class="text-rose-300 block">契約竣工日</span>
+                            <span id="bannerContractEndDate" class="font-mono font-bold text-sm text-rose-400">2027-03-22</span>
+                        </div>
+                        <div class="h-7 w-[1px] bg-slate-700"></div>
+                        <div>
+                            <span class="text-slate-400 block">預估實際完工日</span>
+                            <span id="bannerActualEndDate" class="font-mono font-bold text-sm text-emerald-400">2027-03-22</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 甘特圖本體捲動區域 -->
+                <div id="ganttScrollContainer" class="overflow-x-auto relative">
+                    <div id="ganttCanvas" class="inline-block align-top">
+                        <!-- 由 JavaScript 動態繪製甘特圖 -->
+                    </div>
+                </div>
+
+                <!-- 底部動態圖例說明列 (與自訂色票即時同步，匯出圖片時一併保留) -->
+                <div id="ganttBottomLegendBar" class="px-5 py-2.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+                    <div id="ganttBottomLegend" class="flex flex-wrap items-center gap-4">
+                        <!-- 由 JavaScript 動態渲染階段圖例 -->
+                    </div>
+                    <div class="flex flex-wrap items-center gap-4">
+                        <span class="flex items-center gap-1.5 font-semibold text-rose-700">
+                            <span class="w-0.5 h-3.5 bg-rose-600 inline-block"></span>契約竣工線 (右側終點)
+                        </span>
+                        <span class="flex items-center gap-1.5 text-rose-600">
+                            <span class="w-3.5 h-3 rounded-sm overdue-overlay inline-block"></span>超期警示區段
+                        </span>
+                        <span class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 weekend-bg border border-slate-300 inline-block"></span>週末例假日
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 手動匯入 WBS 對話框 (Modal) -->
+    <div id="importWbsModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+            <!-- Modal 標題列 -->
+            <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-bold">
+                        <i class="fa-solid fa-file-import text-base"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base sm:text-lg font-bold">手動匯入 WBS、工期天數與時程資訊</h3>
+                        <p class="text-xs text-slate-400">支援 Excel 表格直接複製貼上、CSV 檔案上傳，或完整 JSON 專案備份還原</p>
+                    </div>
+                </div>
+                <button onclick="closeImportModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Modal 內容區 -->
+            <div class="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1">
+                <!-- 匯入模式與操作列 -->
+                <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200">
+                    <div class="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-bold">
+                        <button id="importTabCsvBtn" onclick="switchImportTab('csv')" class="px-3.5 py-1.5 rounded-md bg-white text-blue-700 shadow-sm transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-table"></i>CSV / Excel 表格貼上與上傳
+                        </button>
+                        <button id="importTabJsonBtn" onclick="switchImportTab('json')" class="px-3.5 py-1.5 rounded-md text-slate-600 hover:text-slate-900 transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-code"></i>JSON 專案備份檔還原
+                        </button>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button onclick="downloadSampleCsv()" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-download"></i>下載 CSV 範例範本
+                        </button>
+                        <label class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold rounded-lg cursor-pointer transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-folder-open"></i>選擇本機檔案 (.csv / .txt / .json)
+                            <input type="file" id="importFileInput" accept=".csv,.txt,.tsv,.json" onchange="handleImportFileUpload(event)" class="hidden">
+                        </label>
+                    </div>
+                </div>
+
+                <!-- CSV 說明提示框 -->
+                <div id="csvFormatHelpBox" class="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-600 space-y-1.5">
+                    <div class="font-bold text-slate-800 flex items-center gap-1.5">
+                        <i class="fa-solid fa-circle-info text-blue-600"></i>
+                        <span>欄位格式說明（支援逗號 <code class="bg-slate-200 px-1 rounded">,</code> 或 Excel 複製的 <code class="bg-slate-200 px-1 rounded">Tab</code> 分隔）：</span>
+                    </div>
+                    <p class="font-mono text-[11px] bg-white px-2.5 py-1.5 rounded border border-slate-200 text-slate-700">
+                        WBS編號, 工項名稱, 階段分類, 工期天數, 前置工項編號(可選), 開始偏移天數(可選)
+                    </p>
+                    <p class="text-[11px] text-slate-500">
+                        • 階段分類可填：<span class="font-semibold text-blue-600">前期設計與送審</span>、<span class="font-semibold text-amber-600">採購與備料</span>、<span class="font-semibold text-emerald-600">施工與系統建置</span>、<span class="font-semibold text-purple-600">測試驗收與交付</span>（未填預設為施工與系統建置）。
+                    </p>
+                </div>
+
+                <!-- 文字輸入框 -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label id="importTextareaLabel" class="text-xs font-bold text-slate-700">請貼上 CSV 內容或直接從 Excel 複製多列資料貼上：</label>
+                        <button onclick="fillSampleImportText()" class="text-xs text-blue-600 hover:underline font-medium">帶入示範資料測試</button>
+                    </div>
+                    <textarea id="importRawTextarea" rows="7" oninput="parseImportPreview()"
+                        placeholder="範例：&#10;1.1, 專案啟動與現場會勘, 前期設計與送審, 7, , 0&#10;1.2, 施工圖說與設備型錄送審, 前期設計與送審, 10, 1.1, 5&#10;2.1, 核心交換器與UPS採購備料, 採購與備料, 25, 1.2, 14&#10;3.1, 機櫃定位與結構化光纖佈線, 施工與系統建置, 18, 2.1, 35&#10;4.1, 系統整合測試與正式驗收, 測試驗收與交付, 10, 3.1, 53"
+                        class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"></textarea>
+                </div>
+
+                <!-- 即時解析預覽區 -->
+                <div class="border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="px-3.5 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-700">
+                            <i class="fa-solid fa-eye text-indigo-600 mr-1"></i>即時解析預覽
+                        </span>
+                        <span id="importPreviewBadge" class="text-xs font-semibold text-slate-500">尚未偵測到有效工項</span>
+                    </div>
+                    <div id="importPreviewContainer" class="max-h-44 overflow-y-auto bg-white p-3 text-xs text-slate-500">
+                        請在上方輸入或上傳 WBS 資料以預覽解析結果...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal 底部按鈕列 -->
+            <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-4 text-xs font-semibold text-slate-700">
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="importMergeMode" value="replace" checked class="text-blue-600 focus:ring-blue-500">
+                        <span>覆蓋現有 WBS 列表</span>
+                    </label>
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="importMergeMode" value="append" class="text-blue-600 focus:ring-blue-500">
+                        <span>附加至現有 WBS 列表後方</span>
+                    </label>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <button onclick="closeImportModal()" class="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold rounded-lg transition">
+                        取消
+                    </button>
+                    <button onclick="confirmExecuteImport()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-check"></i>確認匯入並更新甘特圖
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 拖曳時的即時浮動資訊提示框 (Tooltip) -->
+    <div id="dragTooltip" class="fixed pointer-events-none hidden z-50 bg-slate-900/95 text-white text-xs rounded-lg px-3 py-2 shadow-xl border border-slate-700 backdrop-blur-sm">
+        <div id="tooltipTitle" class="font-bold text-blue-300 mb-0.5">工項名稱</div>
+        <div id="tooltipDates" class="font-mono text-slate-200">2026-11-23 ~ 2026-12-05</div>
+        <div id="tooltipDuration" class="text-amber-400 font-semibold mt-0.5">工期：12 天</div>
+        <div id="tooltipOverdueWarn" class="text-rose-400 font-bold mt-0.5 hidden">⚠ 已超出契約竣工日！</div>
+    </div>
+
+    <!-- 自定義提示訊息橫幅 -->
+    <div id="toastNotification" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+        <div class="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg border border-slate-700 flex items-center gap-3 text-sm">
+            <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400 text-base"></i>
+            <span id="toastMessage">操作完成</span>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. 狀態與四大階段分類定義
+        // ==========================================
+        const STORAGE_KEY = 'pmo_gantt_planner_v2_state';
+
+        const DEFAULT_STAGES = {
+            design:       { id: 'design',       label: '前期設計與送審', color: '#3b82f6' }, // 藍
+            procurement:  { id: 'procurement',  label: '採購與備料',     color: '#f59e0b' }, // 琥珀橘
+            construction: { id: 'construction', label: '施工與系統建置', color: '#10b981' }, // 翠綠
+            acceptance:   { id: 'acceptance',   label: '測試驗收與交付', color: '#8b5cf6' }  // 紫
+        };
+
+        const SCALE_CONFIG = {
+            day:   { dayWidth: 32, label: '日檢視' },
+            week:  { dayWidth: 16, label: '週檢視' },
+            month: { dayWidth: 8,  label: '月檢視' }
+        };
+
+        // 字體大小對應的甘特圖幾何尺寸配置 (16px / 20px / 26px)
+        const FONT_SIZE_CONFIG = {
+            16: {
+                fontSizePx: 16,
+                barFontSizePx: 13,
+                leftColWidth: 440,
+                dateColWidth: 112,
+                durColWidth: 64,
+                rowHeight: 48,
+                barHeight: 32,
+                topHeaderHeight: 28,
+                subHeaderHeight: 34,
+                tableTextClass: 'text-base',
+                tableInputClass: 'text-sm'
+            },
+            20: {
+                fontSizePx: 20,
+                barFontSizePx: 15,
+                leftColWidth: 530,
+                dateColWidth: 132,
+                durColWidth: 76,
+                rowHeight: 58,
+                barHeight: 38,
+                topHeaderHeight: 34,
+                subHeaderHeight: 40,
+                tableTextClass: 'text-lg',
+                tableInputClass: 'text-base'
+            },
+            26: {
+                fontSizePx: 26,
+                barFontSizePx: 18,
+                leftColWidth: 660,
+                dateColWidth: 160,
+                durColWidth: 92,
+                rowHeight: 72,
+                barHeight: 46,
+                topHeaderHeight: 42,
+                subHeaderHeight: 48,
+                tableTextClass: 'text-xl',
+                tableInputClass: 'text-lg'
+            }
+        };
+
+        let state = {
+            projectName: '企業核心機房建置與系統整合工程',
+            awardDate: '',
+            contractDuration: 120,
+            dayMode: 'calendar', // 'calendar' 或 'working'
+            timeScale: 'week',   // 'day', 'week', 'month'
+            fontSize: 16,        // 16, 20, 26
+            stages: JSON.parse(JSON.stringify(DEFAULT_STAGES)),
+            tasks: []
+        };
+
+        let dragState = null;
+        let currentImportTab = 'csv';
+        let parsedImportCache = null;
+
+        // ==========================================
+        // 2. 日期與工期運算核心工具函式
+        // ==========================================
+        function getTodayStr() {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function parseDate(dateStr) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        }
+
+        function formatDate(dateObj) {
+            const y = dateObj.getFullYear();
+            const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const d = String(dateObj.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function isWeekend(dateObj) {
+            const day = dateObj.getDay();
+            return day === 0 || day === 6;
+        }
+
+        function addCalendarDays(dateStr, days) {
+            const d = parseDate(dateStr);
+            d.setDate(d.getDate() + days);
+            return formatDate(d);
+        }
+
+        function diffCalendarDays(startStr, endStr) {
+            const s = parseDate(startStr);
+            const e = parseDate(endStr);
+            return Math.round((e - s) / (1000 * 60 * 60 * 24));
+        }
+
+        // 若為工作天模式，將週末順延至下週一
+        function snapToWorkingDay(dateStr) {
+            if (state.dayMode === 'calendar') return dateStr;
+            let d = parseDate(dateStr);
+            while (isWeekend(d)) {
+                d.setDate(d.getDate() + 1);
+            }
+            return formatDate(d);
+        }
+
+        // 根據開始日與工期天數計算結束日 (含起始日當天算第1天)
+        function calculateEndDate(startStr, duration) {
+            const dur = Math.max(1, parseInt(duration, 10) || 1);
+            if (state.dayMode === 'calendar') {
+                return addCalendarDays(startStr, dur - 1);
+            } else {
+                let d = parseDate(startStr);
+                let counted = isWeekend(d) ? 0 : 1;
+                while (counted < dur) {
+                    d.setDate(d.getDate() + 1);
+                    if (!isWeekend(d)) {
+                        counted++;
+                    }
+                }
+                return formatDate(d);
+            }
+        }
+
+        // 根據開始日與結束日反推工期天數
+        function calculateDuration(startStr, endStr) {
+            const s = parseDate(startStr);
+            const e = parseDate(endStr);
+            if (e < s) return 1;
+            if (state.dayMode === 'calendar') {
+                return diffCalendarDays(startStr, endStr) + 1;
+            } else {
+                let count = 0;
+                let cur = new Date(s);
+                while (cur <= e) {
+                    if (!isWeekend(cur)) count++;
+                    cur.setDate(cur.getDate() + 1);
+                }
+                return Math.max(1, count);
+            }
+        }
+
+        // 取得專案實際開工起算日：預設為「決標次日 (決標日 + 1 天)」
+        function getProjectStartDate() {
+            const award = state.awardDate || getTodayStr();
+            const nextDay = addCalendarDays(award, 1);
+            return snapToWorkingDay(nextDay);
+        }
+
+        // 計算契約竣工日 (由決標次日 + 契約工期推算)
+        function getContractCompletionDate() {
+            const start = getProjectStartDate();
+            return calculateEndDate(start, state.contractDuration);
+        }
+
+        // 顏色輔助：將 Hex 轉為 RGBA 淺底色供 WBS 表格標籤使用
+        function hexToRgba(hex, alpha) {
+            const clean = hex.replace('#', '');
+            const r = parseInt(clean.substring(0, 2), 16) || 59;
+            const g = parseInt(clean.substring(2, 4), 16) || 130;
+            const b = parseInt(clean.substring(4, 6), 16) || 246;
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+
+        // ==========================================
+        // 3. 三種標準工程範本 (短 90天 / 中 120天 / 長 150天)
+        // ==========================================
+        const TEMPLATE_PRESETS = {
+            short: {
+                title: '中小型機房與網路監控汰換工程 (90天專案)',
+                contractDays: 90,
+                tasks: [
+                    { id: 's1',  name: '1. 開工會議、現場會勘與細部設計',     stage: 'design',       offset: 0,  duration: 8,  predecessorId: '',    lag: 0 },
+                    { id: 's2',  name: '2. 施工圖說與主要設備型錄送審',       stage: 'design',       offset: 6,  duration: 8,  predecessorId: 's1',  lag: -2 },
+                    { id: 's3',  name: '3. 機櫃、UPS 及網路交換器採購備料',   stage: 'procurement',  offset: 12, duration: 22, predecessorId: 's2',  lag: -2 },
+                    { id: 's4',  name: '4. 弱電線材、光纖模組與監控器材備料', stage: 'procurement',  offset: 15, duration: 18, predecessorId: 's2',  lag: 1 },
+                    { id: 's5',  name: '5. 機房地坪整修、接地網與機櫃定位',   stage: 'construction', offset: 30, duration: 12, predecessorId: 's3',  lag: -4 },
+                    { id: 's6',  name: '6. 專迴電力配線與不斷電系統(UPS)安裝',stage: 'construction', offset: 38, duration: 12, predecessorId: 's5',  lag: -4 },
+                    { id: 's7',  name: '7. 結構化光纖/網路佈線與理線架施工',  stage: 'construction', offset: 42, duration: 14, predecessorId: 's5',  lag: 0 },
+                    { id: 's8',  name: '8. CCTV 數位監控與門禁讀卡機建置',    stage: 'construction', offset: 50, duration: 12, predecessorId: 's4',  lag: 17 },
+                    { id: 's9',  name: '9. 核心網路設備上架與 VLAN/資安設定', stage: 'construction', offset: 56, duration: 12, predecessorId: 's7',  lag: 0 },
+                    { id: 's10', name: '10. 單機功能測試與系統整合測試(SIT)', stage: 'acceptance',   offset: 68, duration: 10, predecessorId: 's9',  lag: 0 },
+                    { id: 's11', name: '11. 竣工圖說整理、教育訓練與驗收交付',stage: 'acceptance',   offset: 78, duration: 12, predecessorId: 's10', lag: 0 }
+                ]
+            },
+            medium: {
+                title: '企業核心機房建置與系統整合工程 (120天專案)',
+                contractDays: 120,
+                tasks: [
+                    { id: 'm1',  name: '1. 專案啟動、現場放樣與需求訪談確認',   stage: 'design',       offset: 0,  duration: 8,  predecessorId: '',    lag: 0 },
+                    { id: 'm2',  name: '2. 機電空調與弱電施工圖(Shop Drawing)送審', stage: 'design',   offset: 7,  duration: 12, predecessorId: 'm1',  lag: -1 },
+                    { id: 'm3',  name: '3. 精密空調與 UPS 不斷電系統訂購備料', stage: 'procurement',  offset: 16, duration: 32, predecessorId: 'm2',  lag: -3 },
+                    { id: 'm4',  name: '4. 客製化配電盤(PANEL)組裝與出廠檢驗', stage: 'procurement',  offset: 18, duration: 26, predecessorId: 'm2',  lag: -1 },
+                    { id: 'm5',  name: '5. 核心交換器、機櫃與環控設備採購備料', stage: 'procurement',  offset: 20, duration: 28, predecessorId: 'm2',  lag: 1 },
+                    { id: 'm6',  name: '6. 防火隔間、天花板與地坪防塵漆施工',   stage: 'construction', offset: 22, duration: 16, predecessorId: 'm2',  lag: 3 },
+                    { id: 'm7',  name: '7. 機房專用高架地板與銅排接地網建置',   stage: 'construction', offset: 36, duration: 12, predecessorId: 'm6',  lag: -2 },
+                    { id: 'm8',  name: '8. 電力幹線、配電盤與 UPS 系統安裝接線', stage: 'construction', offset: 46, duration: 18, predecessorId: 'm4',  lag: 2 },
+                    { id: 'm9',  name: '9. 精密空調主機安裝、冷媒管路與冷熱通道', stage: 'construction', offset: 48, duration: 18, predecessorId: 'm3',  lag: 0 },
+                    { id: 'm10', name: '10. 結構化光纖/網路高架線槽與佈線工程',  stage: 'construction', offset: 52, duration: 18, predecessorId: 'm7',  lag: 4 },
+                    { id: 'm11', name: '11. FM200 氣體消防與極早期預警系統施工', stage: 'construction', offset: 62, duration: 14, predecessorId: 'm8',  lag: -2 },
+                    { id: 'm12', name: '12. 機房環控(EMS)、門禁與 CCTV 系統建置', stage: 'construction', offset: 68, duration: 15, predecessorId: 'm10', lag: -2 },
+                    { id: 'm13', name: '13. 機櫃上架、網路設備安裝與路由設定',   stage: 'construction', offset: 76, duration: 16, predecessorId: 'm5',  lag: 28 },
+                    { id: 'm14', name: '14. 全系統整合測試(SIT)與滿載燒機測試',   stage: 'acceptance',   offset: 92, duration: 14, predecessorId: 'm13', lag: 0 },
+                    { id: 'm15', name: '15. 消防會勘、操作訓練與正式竣工驗收',   stage: 'acceptance',   offset: 106,duration: 14, predecessorId: 'm14', lag: 0 }
+                ]
+            },
+            long: {
+                title: '新建智慧大樓數據中心統包工程 (150天專案)',
+                contractDays: 150,
+                tasks: [
+                    { id: 'l1',  name: '1. 統包開工、BIM 管線衝突檢討與規劃',   stage: 'design',       offset: 0,  duration: 12, predecessorId: '',    lag: 0 },
+                    { id: 'l2',  name: '2. 電力/空調/消防/弱電全套施工圖送審',   stage: 'design',       offset: 10, duration: 15, predecessorId: 'l1',  lag: -2 },
+                    { id: 'l3',  name: '3. 長交期進口設備(大型UPS/發電機)製造船期',stage: 'procurement', offset: 20, duration: 48, predecessorId: 'l2',  lag: -5 },
+                    { id: 'l4',  name: '4. 冰水型精密空調主機訂製與工廠測試(FAT)',stage: 'procurement', offset: 22, duration: 42, predecessorId: 'l2',  lag: -3 },
+                    { id: 'l5',  name: '5. 高低壓配電盤體與匯流排(Busway)製造備料',stage: 'procurement', offset: 25, duration: 35, predecessorId: 'l2',  lag: 0 },
+                    { id: 'l6',  name: '6. 核心骨幹交換器、防火牆與智能機櫃備料',stage: 'procurement',  offset: 30, duration: 36, predecessorId: 'l2',  lag: 5 },
+                    { id: 'l7',  name: '7. 機房防水隔熱、防火區劃隔間與粉刷工程',stage: 'construction', offset: 28, duration: 20, predecessorId: 'l2',  lag: 3 },
+                    { id: 'l8',  name: '8. 重載型高架地板、防震基座與接地網施工',stage: 'construction', offset: 46, duration: 16, predecessorId: 'l7',  lag: -2 },
+                    { id: 'l9',  name: '9. 冰水管路保溫配管與冷熱通道封閉建置',  stage: 'construction', offset: 60, duration: 22, predecessorId: 'l4',  lag: -4 },
+                    { id: 'l10', name: '10. 高低壓電力幹線、匯流排與 UPS 併聯安裝',stage: 'construction', offset: 66, duration: 24, predecessorId: 'l3',  lag: -2 },
+                    { id: 'l11', name: '11. 骨幹單模光纖、Cat.6A 佈線與光纖槽道',stage: 'construction', offset: 68, duration: 22, predecessorId: 'l8',  lag: 6 },
+                    { id: 'l12', name: '12. 潔淨氣體滅火系統與極早期煙霧偵測施工',stage: 'construction', offset: 82, duration: 16, predecessorId: 'l9',  lag: 0 },
+                    { id: 'l13', name: '13. DCIM 智慧環控、生物門禁與 AI 監控建置',stage: 'construction', offset: 88, duration: 18, predecessorId: 'l11', lag: -2 },
+                    { id: 'l14', name: '14. 智能機櫃上架、核心網路與資安架構建置',stage: 'construction', offset: 96, duration: 20, predecessorId: 'l6',  lag: 30 },
+                    { id: 'l15', name: '15. 假負載滿載燒機測試(Load Bank Test)',  stage: 'acceptance',   offset: 116,duration: 10, predecessorId: 'l10', lag: 26 },
+                    { id: 'l16', name: '16. 跨系統聯動測試(SIT)與雙迴路斷電演練',stage: 'acceptance',   offset: 124,duration: 12, predecessorId: 'l14', lag: 8 },
+                    { id: 'l17', name: '17. 消防主管機關竣工查驗與改善複檢',    stage: 'acceptance',   offset: 132,duration: 10, predecessorId: 'l12', lag: 34 },
+                    { id: 'l18', name: '18. 竣工文件移交、維運訓練與正式驗收結案',stage: 'acceptance',   offset: 140,duration: 10, predecessorId: 'l16', lag: 4 }
+                ]
+            }
+        };
+
+        function loadTemplatePreset(presetKey, silent = false) {
+            const preset = TEMPLATE_PRESETS[presetKey] || TEMPLATE_PRESETS.medium;
+            const awardDate = state.awardDate || document.getElementById('awardDate').value || getTodayStr();
+
+            state.projectName = preset.title;
+            state.contractDuration = preset.contractDays;
+            state.awardDate = awardDate;
+
+            document.getElementById('projectName').value = state.projectName;
+            document.getElementById('contractDuration').value = state.contractDuration;
+
+            // 以「決標次日」作為專案開工基準日 (Day 0)
+            const projectStart = getProjectStartDate();
+            const contractEnd = getContractCompletionDate();
+
+            state.tasks = preset.tasks.map(item => {
+                const rawStart = addCalendarDays(projectStart, item.offset);
+                const startDate = snapToWorkingDay(rawStart);
+                let endDate = calculateEndDate(startDate, item.duration);
+                let duration = item.duration;
+
+                // 若在日曆天模式下總天數導致超過契約竣工日，自動微調使其精準落於契約竣工日內
+                if (state.dayMode === 'calendar' && endDate > contractEnd) {
+                    endDate = contractEnd;
+                    duration = calculateDuration(startDate, endDate);
+                }
+
+                return {
+                    id: item.id,
+                    name: item.name,
+                    stage: item.stage,
+                    startDate: startDate,
+                    duration: duration,
+                    endDate: endDate,
+                    predecessorId: item.predecessorId,
+                    lag: item.lag
+                };
+            });
+
+            // 若為工作天模式，自動執行一次邏輯順排並等比例壓縮至契約工期內，確保範本初始即合理落於契約竣工線內
+            if (state.dayMode === 'working') {
+                fitTasksWithinContractDays();
+            }
+
+            saveToStorage();
+            renderAll();
+            if (!silent) {
+                showToast(`已載入「${preset.title}」範本（開工日：決標次日 ${projectStart}）`);
+            }
+        }
+
+        // 當工作天模式下範本工項超過契約竣工日時的智慧收斂輔助
+        function fitTasksWithinContractDays() {
+            const projectStart = getProjectStartDate();
+            const contractEnd = getContractCompletionDate();
+            let maxEnd = state.tasks.reduce((max, t) => t.endDate > max ? t.endDate : max, projectStart);
+            if (maxEnd <= contractEnd) return;
+
+            const totalSpan = Math.max(1, diffCalendarDays(projectStart, maxEnd));
+            const targetSpan = Math.max(1, diffCalendarDays(projectStart, contractEnd));
+            const ratio = targetSpan / totalSpan;
+
+            state.tasks.forEach(t => {
+                const startOff = Math.round(diffCalendarDays(projectStart, t.startDate) * ratio);
+                t.startDate = snapToWorkingDay(addCalendarDays(projectStart, startOff));
+                t.duration = Math.max(1, Math.round(t.duration * ratio));
+                t.endDate = calculateEndDate(t.startDate, t.duration);
+                if (t.endDate > contractEnd) {
+                    t.endDate = contractEnd;
+                    t.duration = calculateDuration(t.startDate, t.endDate);
+                }
+            });
+        }
+
+        // 依前置工項相依性與階段邏輯自動順排時程 (從決標次日起算)
+        function autoScheduleByLogic() {
+            const projectStart = getProjectStartDate();
+            const taskMap = {};
+            state.tasks.forEach(t => taskMap[t.id] = t);
+
+            state.tasks.forEach((task, index) => {
+                if (task.predecessorId && taskMap[task.predecessorId]) {
+                    const pred = taskMap[task.predecessorId];
+                    const lagDays = typeof task.lag === 'number' ? task.lag : 0;
+                    const baseDate = addCalendarDays(pred.endDate, 1 + lagDays);
+                    const clampedDate = diffCalendarDays(projectStart, baseDate) < 0 ? projectStart : baseDate;
+                    task.startDate = snapToWorkingDay(clampedDate);
+                } else if (index === 0) {
+                    task.startDate = projectStart;
+                } else {
+                    const prev = state.tasks[index - 1];
+                    const offset = task.stage === 'acceptance' ? 1 : -Math.min(3, Math.floor(prev.duration / 3));
+                    const nextStart = addCalendarDays(prev.endDate, offset);
+                    const clampedDate = diffCalendarDays(projectStart, nextStart) < 0 ? projectStart : nextStart;
+                    task.startDate = snapToWorkingDay(clampedDate);
+                }
+                task.endDate = calculateEndDate(task.startDate, task.duration);
+            });
+
+            saveToStorage();
+            renderAll();
+            showToast(`已依據決標次日 (${projectStart}) 與前置邏輯自動順排時程`);
+        }
+
+        // ==========================================
+        // 4. LocalStorage 自動儲存與重置
+        // ==========================================
+        function saveToStorage() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            } catch (e) {
+                console.warn('LocalStorage 儲存失敗:', e);
+            }
+        }
+
+        function loadFromStorage() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return false;
+                const parsed = JSON.parse(raw);
+                if (parsed && Array.isArray(parsed.tasks) && parsed.tasks.length > 0) {
+                    state = {
+                        ...state,
+                        ...parsed,
+                        stages: { ...JSON.parse(JSON.stringify(DEFAULT_STAGES)), ...(parsed.stages || {}) }
+                    };
+                    return true;
+                }
+            } catch (e) {
+                console.warn('LocalStorage 讀取失敗:', e);
+            }
+            return false;
+        }
+
+        function resetToDefaultStorage() {
+            localStorage.removeItem(STORAGE_KEY);
+            state.stages = JSON.parse(JSON.stringify(DEFAULT_STAGES));
+            state.dayMode = 'calendar';
+            state.timeScale = 'week';
+            state.fontSize = 16;
+            state.awardDate = getTodayStr();
+            document.getElementById('awardDate').value = state.awardDate;
+            updateDayModeButtons();
+            updateTimeScaleButtons();
+            updateFontSizeButtons();
+            loadTemplatePreset('medium', true);
+            showToast('已重置為預設 120 天標準工程範本與預設設定');
+        }
+
+        // ==========================================
+        // 5. 參數控制與階段顏色動態調整
+        // ==========================================
+        function onProjectParamChange() {
+            state.projectName = document.getElementById('projectName').value || '未命名工程專案';
+            saveToStorage();
+            updateSummary();
+        }
+
+        function onContractDurationChange() {
+            const val = parseInt(document.getElementById('contractDuration').value, 10);
+            state.contractDuration = Math.max(5, Math.min(1825, val || 90));
+            document.getElementById('contractDuration').value = state.contractDuration;
+            saveToStorage();
+            renderAll();
+            showToast(`已更新契約工期為 ${state.contractDuration} ${state.dayMode === 'calendar' ? '日曆天' : '工作天'}`);
+        }
+
+        function onAwardDateChange() {
+            const newAwardDate = document.getElementById('awardDate').value;
+            if (!newAwardDate) return;
+
+            const oldAwardDate = state.awardDate || newAwardDate;
+            const delta = diffCalendarDays(oldAwardDate, newAwardDate);
+            state.awardDate = newAwardDate;
+
+            state.tasks.forEach(task => {
+                const shifted = addCalendarDays(task.startDate, delta);
+                task.startDate = snapToWorkingDay(shifted);
+                task.endDate = calculateEndDate(task.startDate, task.duration);
+            });
+
+            saveToStorage();
+            renderAll();
+            showToast('已依據新決標日同步平移專案時程');
+        }
+
+        function setDayMode(mode) {
+            if (state.dayMode === mode) return;
+            state.dayMode = mode;
+            updateDayModeButtons();
+
+            state.tasks.forEach(task => {
+                task.startDate = snapToWorkingDay(task.startDate);
+                task.endDate = calculateEndDate(task.startDate, task.duration);
+            });
+
+            saveToStorage();
+            renderAll();
+            showToast(`已切換為「${mode === 'calendar' ? '日曆天' : '工作天 (排除週六日)'}」計算模式`);
+        }
+
+        function updateDayModeButtons() {
+            const calBtn = document.getElementById('modeCalendarBtn');
+            const workBtn = document.getElementById('modeWorkingBtn');
+            const unitLabel = document.getElementById('contractUnitLabel');
+            if (state.dayMode === 'calendar') {
+                calBtn.className = 'py-1.5 px-2 text-xs font-semibold rounded-md transition bg-white text-blue-700 shadow-sm';
+                workBtn.className = 'py-1.5 px-2 text-xs font-semibold rounded-md transition text-slate-600 hover:text-slate-900';
+                unitLabel.textContent = '日曆天';
+            } else {
+                workBtn.className = 'py-1.5 px-2 text-xs font-semibold rounded-md transition bg-white text-blue-700 shadow-sm';
+                calBtn.className = 'py-1.5 px-2 text-xs font-semibold rounded-md transition text-slate-600 hover:text-slate-900';
+                unitLabel.textContent = '工作天';
+            }
+        }
+
+        function setTimeScale(scale) {
+            state.timeScale = scale;
+            updateTimeScaleButtons();
+            saveToStorage();
+            renderGanttChart();
+        }
+
+        function updateTimeScaleButtons() {
+            ['day', 'week', 'month'].forEach(key => {
+                const btn = document.getElementById(`scale${key.charAt(0).toUpperCase() + key.slice(1)}Btn`);
+                if (key === state.timeScale) {
+                    btn.className = 'px-3 py-1 rounded-md bg-white text-blue-700 shadow-sm transition';
+                } else {
+                    btn.className = 'px-3 py-1 rounded-md text-slate-600 hover:text-slate-900 transition';
+                }
+            });
+        }
+
+        function setFontSize(size) {
+            if (!FONT_SIZE_CONFIG[size]) return;
+            state.fontSize = size;
+            updateFontSizeButtons();
+            saveToStorage();
+            renderAll();
+            showToast(`已將字體大小切換為 ${size}px`);
+        }
+
+        function updateFontSizeButtons() {
+            [16, 20, 26].forEach(sz => {
+                const btn = document.getElementById(`fontSize${sz}Btn`);
+                if (!btn) return;
+                if (sz === state.fontSize) {
+                    btn.className = 'px-2.5 py-1 rounded-md bg-white text-indigo-700 shadow-sm transition';
+                } else {
+                    btn.className = 'px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition';
+                }
+            });
+        }
+
+        function updateStageColor(stageKey, newColor) {
+            if (!state.stages[stageKey]) return;
+            state.stages[stageKey].color = newColor;
+            saveToStorage();
+            renderStageColorControls();
+            renderWbsTable();
+            renderGanttChart();
+        }
+
+        function renderStageColorControls() {
+            const container = document.getElementById('stageColorConfigList');
+            const bottomLegend = document.getElementById('ganttBottomLegend');
+
+            let configHtml = '';
+            let legendHtml = `<span class="font-semibold text-slate-700">階段分類圖例：</span>`;
+
+            Object.values(state.stages).forEach(st => {
+                configHtml += `
+                    <label class="inline-flex items-center gap-2 px-2.5 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer transition shadow-2xs" title="點擊色塊更換「${st.label}」顏色">
+                        <input type="color" value="${st.color}" oninput="updateStageColor('${st.id}', this.value)" class="stage-color-picker w-5 h-5">
+                        <span class="text-xs font-semibold text-slate-700">${st.label}</span>
+                    </label>
+                `;
+
+                legendHtml += `
+                    <span class="inline-flex items-center gap-1.5 font-medium text-slate-700">
+                        <span style="background-color: ${st.color};" class="w-3.5 h-3.5 rounded-sm inline-block shadow-2xs"></span>
+                        ${st.label}
+                    </span>
+                `;
+            });
+
+            container.innerHTML = configHtml;
+            bottomLegend.innerHTML = legendHtml;
+        }
+
+        // ==========================================
+        // 6. WBS 工項增刪改與排序操作
+        // ==========================================
+        function addNewTask() {
+            const projectStart = getProjectStartDate();
+            const contractEnd = getContractCompletionDate();
+            const lastTask = state.tasks[state.tasks.length - 1];
+            const newId = 't_' + Date.now();
+
+            let startDate = lastTask ? snapToWorkingDay(addCalendarDays(lastTask.endDate, 1)) : projectStart;
+            if (startDate > contractEnd) {
+                startDate = snapToWorkingDay(addCalendarDays(contractEnd, -5));
+            }
+            const duration = 7;
+            const endDate = calculateEndDate(startDate, duration);
+
+            state.tasks.push({
+                id: newId,
+                name: `${state.tasks.length + 1}. 新增工程項目`,
+                stage: 'construction',
+                startDate: startDate,
+                duration: duration,
+                endDate: endDate,
+                predecessorId: lastTask ? lastTask.id : '',
+                lag: 0
+            });
+
+            saveToStorage();
+            renderAll();
+            showToast('已新增 WBS 工項');
+        }
+
+        function deleteTask(id) {
+            if (state.tasks.length <= 1) {
+                showToast('至少需保留一項 WBS 工項', 'warning');
+                return;
+            }
+            state.tasks = state.tasks.filter(t => t.id !== id);
+            state.tasks.forEach(t => {
+                if (t.predecessorId === id) t.predecessorId = '';
+            });
+            saveToStorage();
+            renderAll();
+        }
+
+        function moveTask(index, direction) {
+            const targetIndex = index + direction;
+            if (targetIndex < 0 || targetIndex >= state.tasks.length) return;
+            const temp = state.tasks[index];
+            state.tasks[index] = state.tasks[targetIndex];
+            state.tasks[targetIndex] = temp;
+            saveToStorage();
+            renderAll();
+        }
+
+        function updateTaskField(id, field, value) {
+            const task = state.tasks.find(t => t.id === id);
+            if (!task) return;
+
+            if (field === 'name' || field === 'stage' || field === 'predecessorId') {
+                task[field] = value;
+                if (field === 'predecessorId') {
+                    task.lag = 0;
+                }
+            } else if (field === 'startDate') {
+                if (!value) return;
+                task.startDate = snapToWorkingDay(value);
+                task.endDate = calculateEndDate(task.startDate, task.duration);
+            } else if (field === 'duration') {
+                const dur = Math.max(1, parseInt(value, 10) || 1);
+                task.duration = dur;
+                task.endDate = calculateEndDate(task.startDate, dur);
+            } else if (field === 'endDate') {
+                if (!value) return;
+                if (parseDate(value) < parseDate(task.startDate)) {
+                    task.endDate = task.startDate;
+                } else {
+                    task.endDate = value;
+                }
+                task.duration = calculateDuration(task.startDate, task.endDate);
+            }
+
+            saveToStorage();
+            renderAll();
+        }
+
+        // ==========================================
+        // 7. 渲染專案 KPI 摘要與 WBS 表格
+        // ==========================================
+        function updateSummary() {
+            const projectName = state.projectName || '未命名工程專案';
+            const awardDate = state.awardDate || getTodayStr();
+            const projectStartDate = getProjectStartDate();
+            const contractEndDate = getContractCompletionDate();
+            const unitText = state.dayMode === 'calendar' ? '日曆天' : '工作天';
+
+            const startHintEl = document.getElementById('projectStartDateHint');
+            if (startHintEl) {
+                startHintEl.textContent = `開工(次日): ${projectStartDate}`;
+            }
+
+            let actualEndDate = projectStartDate;
+            if (state.tasks.length > 0) {
+                actualEndDate = state.tasks.reduce((max, t) => t.endDate > max ? t.endDate : max, state.tasks[0].endDate);
+            }
+
+            const overdueDays = diffCalendarDays(contractEndDate, actualEndDate);
+            const actualEl = document.getElementById('summaryActualEndDate');
+            const statusEl = document.getElementById('summaryScheduleStatus');
+            const bannerActualEl = document.getElementById('bannerActualEndDate');
+
+            document.getElementById('summaryContractEndDate').textContent = contractEndDate;
+            actualEl.textContent = actualEndDate;
+
+            if (overdueDays > 0) {
+                actualEl.className = 'text-xs sm:text-sm font-mono font-bold text-rose-400 mt-0.5';
+                statusEl.className = 'text-[10px] text-rose-300 font-semibold mt-0.5 truncate';
+                statusEl.textContent = `⚠ 超出契約工期 ${overdueDays} 天`;
+                bannerActualEl.className = 'font-mono font-bold text-sm text-rose-400';
+            } else {
+                const bufferDays = Math.abs(overdueDays);
+                actualEl.className = 'text-xs sm:text-sm font-mono font-bold text-emerald-400 mt-0.5';
+                statusEl.className = 'text-[10px] text-emerald-300/90 mt-0.5 truncate';
+                statusEl.textContent = bufferDays === 0 ? '準時於契約日完工' : `提前契約 ${bufferDays} 日曆天`;
+                bannerActualEl.className = 'font-mono font-bold text-sm text-emerald-400';
+            }
+
+            document.getElementById('taskCountBadge').textContent = `${state.tasks.length} 項工項`;
+
+            // 同步更新甘特圖匯出表頭
+            document.getElementById('bannerProjectName').textContent = projectName;
+            document.getElementById('bannerAwardDate').textContent = `${awardDate} / ${projectStartDate.slice(5)}`;
+            document.getElementById('bannerContractDays').textContent = `${state.contractDuration} ${unitText}`;
+            document.getElementById('bannerContractEndDate').textContent = contractEndDate;
+            document.getElementById('bannerActualEndDate').textContent = actualEndDate;
+        }
+
+        function renderWbsTable() {
+            const tbody = document.getElementById('wbsTableBody');
+            const contractEnd = getContractCompletionDate();
+            const fCfg = FONT_SIZE_CONFIG[state.fontSize] || FONT_SIZE_CONFIG[16];
+            tbody.innerHTML = '';
+
+            state.tasks.forEach((task, idx) => {
+                const stageObj = state.stages[task.stage] || state.stages.construction;
+                const isOverdue = task.endDate > contractEnd;
+
+                const tr = document.createElement('tr');
+                tr.className = isOverdue ? 'bg-rose-50/50 hover:bg-rose-50 transition-colors' : 'hover:bg-blue-50/40 transition-colors';
+
+                // 前置工項下拉選單
+                let predOptions = `<option value="">-- 無 (獨立排程) --</option>`;
+                state.tasks.forEach((other, oIdx) => {
+                    if (other.id !== task.id) {
+                        const selected = task.predecessorId === other.id ? 'selected' : '';
+                        const shortName = other.name.length > 14 ? other.name.substring(0, 14) + '…' : other.name;
+                        predOptions += `<option value="${other.id}" ${selected}>#${oIdx + 1} ${shortName}</option>`;
+                    }
+                });
+
+                // 階段分類下拉選單
+                let stageOptions = '';
+                Object.values(state.stages).forEach(st => {
+                    stageOptions += `<option value="${st.id}" ${task.stage === st.id ? 'selected' : ''}>${st.label}</option>`;
+                });
+
+                const badgeBg = hexToRgba(stageObj.color, 0.14);
+                const badgeBorder = hexToRgba(stageObj.color, 0.45);
+
+                tr.innerHTML = `
+                    <td class="py-2 px-3 text-center font-mono ${fCfg.tableInputClass} font-bold text-slate-500">${idx + 1}</td>
+                    <td class="py-2 px-3">
+                        <div class="flex items-center gap-1.5">
+                            <input type="text" value="${task.name.replace(/"/g, '&quot;')}" 
+                                onchange="updateTaskField('${task.id}', 'name', this.value)"
+                                class="w-full px-2.5 py-1.5 bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-blue-500 rounded-md ${fCfg.tableTextClass} text-slate-800 font-medium focus:outline-none transition">
+                            ${isOverdue ? `<span class="shrink-0 text-[10px] font-bold bg-rose-600 text-white px-1.5 py-0.5 rounded" title="此工項結束日超出契約竣工日">超期</span>` : ''}
+                        </div>
+                    </td>
+                    <td class="py-2 px-3">
+                        <select onchange="updateTaskField('${task.id}', 'stage', this.value)"
+                            style="background-color: ${badgeBg}; border-color: ${badgeBorder}; color: #1e293b;"
+                            class="w-full px-2 py-1.5 rounded-md ${fCfg.tableInputClass} font-bold border focus:outline-none cursor-pointer">
+                            ${stageOptions}
+                        </select>
+                    </td>
+                    <td class="py-2 px-3">
+                        <input type="date" value="${task.startDate}"
+                            onchange="updateTaskField('${task.id}', 'startDate', this.value)"
+                            class="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-md ${fCfg.tableInputClass} font-mono text-slate-700 focus:border-blue-500 focus:bg-white focus:outline-none">
+                    </td>
+                    <td class="py-2 px-3">
+                        <div class="flex items-center justify-center">
+                            <input type="number" min="1" max="999" value="${task.duration}"
+                                onchange="updateTaskField('${task.id}', 'duration', this.value)"
+                                class="w-20 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md ${fCfg.tableInputClass} font-mono font-bold text-center text-blue-700 focus:border-blue-500 focus:bg-white focus:outline-none">
+                        </div>
+                    </td>
+                    <td class="py-2 px-3">
+                        <input type="date" value="${task.endDate}"
+                            onchange="updateTaskField('${task.id}', 'endDate', this.value)"
+                            class="w-full px-2 py-1 ${isOverdue ? 'bg-rose-100 border-rose-400 text-rose-800 font-bold' : 'bg-slate-50 border-slate-200 text-slate-700'} border rounded-md ${fCfg.tableInputClass} font-mono focus:border-blue-500 focus:bg-white focus:outline-none">
+                    </td>
+                    <td class="py-2 px-3">
+                        <select onchange="updateTaskField('${task.id}', 'predecessorId', this.value)"
+                            class="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md ${fCfg.tableInputClass} text-slate-700 focus:border-blue-500 focus:bg-white focus:outline-none">
+                            ${predOptions}
+                        </select>
+                    </td>
+                    <td class="py-2 px-3 text-center">
+                        <div class="inline-flex items-center gap-1">
+                            <button onclick="moveTask(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} class="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 rounded hover:bg-slate-200 transition" title="上移">
+                                <i class="fa-solid fa-arrow-up text-xs"></i>
+                            </button>
+                            <button onclick="moveTask(${idx}, 1)" ${idx === state.tasks.length - 1 ? 'disabled' : ''} class="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 rounded hover:bg-slate-200 transition" title="下移">
+                                <i class="fa-solid fa-arrow-down text-xs"></i>
+                            </button>
+                            <button onclick="deleteTask('${task.id}')" class="p-1.5 text-rose-400 hover:text-rose-600 rounded hover:bg-rose-50 transition" title="刪除工項">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ==========================================
+        // 8. 渲染互動式甘特圖 (右側精準切齊契約竣工線 + 自適應字體與多列換行)
+        // ==========================================
+        function renderGanttChart() {
+            const canvas = document.getElementById('ganttCanvas');
+            const awardDateStr = state.awardDate || getTodayStr();
+            const projectStartStr = getProjectStartDate();
+            const contractEndStr = getContractCompletionDate();
+            const fCfg = FONT_SIZE_CONFIG[state.fontSize] || FONT_SIZE_CONFIG[16];
+
+            // 放大字體時適度放寬每日像素寬度，確保刻度清晰不擁擠
+            const scaleMultiplier = state.fontSize === 26 ? 1.35 : (state.fontSize === 20 ? 1.15 : 1);
+            const dayWidth = Math.round(SCALE_CONFIG[state.timeScale].dayWidth * scaleMultiplier);
+            const leftColWidth = fCfg.leftColWidth;
+
+            // 同步調整底部圖例文字大小
+            const legendBar = document.getElementById('ganttBottomLegendBar');
+            if (legendBar) {
+                legendBar.style.fontSize = `${Math.max(13, fCfg.fontSizePx - 2)}px`;
+            }
+
+            // 時間軸範圍：起點為決標次日 (或最早任務起始日)，終點嚴格切齊「契約竣工日」
+            let chartStartStr = projectStartStr;
+            state.tasks.forEach(t => {
+                if (t.startDate < chartStartStr) chartStartStr = t.startDate;
+            });
+
+            // 總顯示天數嚴格截止至契約竣工日 (含契約竣工日當天)
+            const totalTimelineDays = Math.max(1, diffCalendarDays(chartStartStr, contractEndStr) + 1);
+            const timelineWidth = totalTimelineDays * dayWidth;
+
+            // 建立每日資料與上層分組 (依時間尺度：日/週/月)
+            const dates = [];
+            const topHeaders = [];
+            const subHeaders = [];
+
+            let curTopGroup = null;
+            let curWeekGroup = null;
+            let weekCounter = 1;
+
+            for (let i = 0; i < totalTimelineDays; i++) {
+                const dStr = addCalendarDays(chartStartStr, i);
+                const dObj = parseDate(dStr);
+                const y = dObj.getFullYear();
+                const m = dObj.getMonth() + 1;
+                const dNum = dObj.getDate();
+                const wDay = dObj.getDay();
+
+                dates.push({
+                    index: i,
+                    dateStr: dStr,
+                    dayNum: dNum,
+                    weekDay: ['日', '一', '二', '三', '四', '五', '六'][wDay],
+                    isWeekend: isWeekend(dObj),
+                    isProjectStart: dStr === projectStartStr,
+                    isContractEnd: dStr === contractEndStr
+                });
+
+                // 上層表頭分組邏輯
+                const topLabel = state.timeScale === 'month' ? `${y}年` : `${y}年${m}月`;
+                if (!curTopGroup || curTopGroup.label !== topLabel) {
+                    curTopGroup = { label: topLabel, count: 0 };
+                    topHeaders.push(curTopGroup);
+                }
+                curTopGroup.count++;
+
+                // 下層表頭分組邏輯
+                if (state.timeScale === 'day') {
+                    subHeaders.push({
+                        label: `${dNum}`,
+                        subLabel: ['日', '一', '二', '三', '四', '五', '六'][wDay],
+                        count: 1,
+                        isWeekend: isWeekend(dObj),
+                        isProjectStart: dStr === projectStartStr,
+                        isContractEnd: dStr === contractEndStr,
+                        tooltip: `${dStr} (週${['日', '一', '二', '三', '四', '五', '六'][wDay]})`
+                    });
+                } else if (state.timeScale === 'week') {
+                    // 每週一或第一天開啟新週次分組
+                    if (i === 0 || wDay === 1) {
+                        const mmdd = `${String(m).padStart(2, '0')}/${String(dNum).padStart(2, '0')}`;
+                        curWeekGroup = {
+                            label: `W${weekCounter} (${mmdd})`,
+                            count: 0,
+                            tooltip: `第 ${weekCounter} 週起 (${dStr})`
+                        };
+                        subHeaders.push(curWeekGroup);
+                        weekCounter++;
+                    }
+                    curWeekGroup.count++;
+                } else if (state.timeScale === 'month') {
+                    // 月檢視下層顯示「1月、2月...」
+                    if (i === 0 || dNum === 1) {
+                        curWeekGroup = {
+                            label: `${m}月`,
+                            count: 0,
+                            tooltip: `${y}年${m}月`
+                        };
+                        subHeaders.push(curWeekGroup);
+                    }
+                    curWeekGroup.count++;
+                }
+            }
+
+            const startIdx = diffCalendarDays(chartStartStr, projectStartStr);
+            const startLineLeft = startIdx * dayWidth;
+            const headerFontSize = Math.max(13, fCfg.fontSizePx - 3);
+            const subHeaderFontSize = Math.max(12, fCfg.fontSizePx - 4);
+
+            // 組合甘特圖 HTML (右側嚴格停止於 timelineWidth = 契約竣工線)
+            let html = `<div style="width: ${leftColWidth + timelineWidth}px;" class="relative select-none border-r-2 border-rose-600">`;
+
+            // --- A. 時間軸雙層表頭 ---
+            html += `
+                <div class="flex bg-slate-100 border-b border-slate-300 sticky top-0 z-20">
+                    <!-- 左側固定表頭 -->
+                    <div style="width: ${leftColWidth}px; min-width: ${leftColWidth}px; font-size: ${headerFontSize}px;" class="sticky left-0 z-30 bg-slate-100 border-r border-slate-300 flex items-end px-3.5 py-2.5 font-bold text-slate-700 shadow-[2px_0_5px_rgba(0,0,0,0.03)]">
+                        <div class="flex-1">WBS 工項名稱</div>
+                        <div style="width: ${fCfg.dateColWidth}px;" class="text-center shrink-0">起訖期間</div>
+                        <div style="width: ${fCfg.durColWidth}px;" class="text-right shrink-0">天數</div>
+                    </div>
+                    <!-- 右側時間軸表頭 (精準切齊契約竣工日) -->
+                    <div style="width: ${timelineWidth}px;" class="relative">
+                        <!-- 第一層表頭 -->
+                        <div style="height: ${fCfg.topHeaderHeight}px;" class="flex border-b border-slate-200">
+                            ${topHeaders.map(th => `
+                                <div style="width: ${th.count * dayWidth}px; font-size: ${headerFontSize}px;" class="border-r border-slate-300 px-2 flex items-center font-bold text-slate-700 bg-slate-200/70 truncate">
+                                    ${th.label}
+                                </div>
+                            `).join('')}
+                        </div>
+                        <!-- 第二層表頭 (依日/週/月切換) -->
+                        <div style="height: ${fCfg.subHeaderHeight}px;" class="flex relative">
+                            ${subHeaders.map(sh => {
+                                if (state.timeScale === 'day') {
+                                    const bgClass = sh.isContractEnd
+                                        ? 'bg-rose-100 text-rose-700 font-bold'
+                                        : (sh.isProjectStart ? 'bg-blue-100 text-blue-700 font-bold' : (sh.isWeekend ? 'bg-slate-200/60 text-slate-400' : 'text-slate-600'));
+                                    return `
+                                        <div style="width: ${sh.count * dayWidth}px;" class="border-r border-slate-200/80 flex flex-col items-center justify-center ${bgClass}" title="${sh.tooltip}">
+                                            <span style="font-size: ${subHeaderFontSize}px;" class="font-semibold leading-none">${sh.label}</span>
+                                            <span class="text-[10px] text-slate-400 leading-none mt-0.5">${sh.subLabel}</span>
+                                        </div>
+                                    `;
+                                } else {
+                                    return `
+                                        <div style="width: ${sh.count * dayWidth}px; font-size: ${subHeaderFontSize}px;" class="border-r border-slate-300/80 px-1.5 flex items-center justify-center font-semibold text-slate-700 truncate bg-slate-50" title="${sh.tooltip}">
+                                            ${sh.count * dayWidth >= 34 ? sh.label : ''}
+                                        </div>
+                                    `;
+                                }
+                            }).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // --- B. 任務列主體 (支援 WBS 工項名稱多列完整顯示) ---
+            html += `<div class="relative divide-y divide-slate-200">`;
+
+            state.tasks.forEach((task, idx) => {
+                const stageObj = state.stages[task.stage] || state.stages.construction;
+                const startOffsetDays = diffCalendarDays(chartStartStr, task.startDate);
+                const spanCalendarDays = diffCalendarDays(task.startDate, task.endDate) + 1;
+
+                const rawBarLeft = startOffsetDays * dayWidth;
+                const rawBarWidth = Math.max(dayWidth, spanCalendarDays * dayWidth);
+
+                // 計算是否超出契約竣工線 (timelineWidth)
+                const maxAllowedWidth = Math.max(0, timelineWidth - rawBarLeft);
+                const clippedBarWidth = Math.min(rawBarWidth, maxAllowedWidth);
+                const isOverdue = task.endDate > contractEndStr;
+
+                // 若任務超出契約竣工日，計算超期區段在契約竣工線前的警示寬度
+                const overdueStartDays = Math.max(0, diffCalendarDays(task.startDate, contractEndStr));
+                const normalPartWidth = isOverdue ? Math.max(0, overdueStartDays * dayWidth) : clippedBarWidth;
+                const overdueWarnWidth = isOverdue ? Math.max(6, clippedBarWidth - normalPartWidth) : 0;
+
+                const shortStart = task.startDate.slice(5);
+                const shortEnd = task.endDate.slice(5);
+
+                html += `
+                    <div style="min-height: ${fCfg.rowHeight}px;" class="flex items-stretch hover:bg-blue-50/30 transition-colors group">
+                        <!-- 左側固定任務資訊 (支援多列自動換行完整顯示) -->
+                        <div style="width: ${leftColWidth}px; min-width: ${leftColWidth}px; font-size: ${fCfg.fontSizePx}px;" class="sticky left-0 z-20 bg-white group-hover:bg-blue-50/80 border-r border-slate-300 flex items-center px-3.5 py-2.5 shadow-[2px_0_5px_rgba(0,0,0,0.03)]">
+                            <span style="background-color: ${stageObj.color};" class="w-3 h-3 rounded-full mr-2.5 shrink-0"></span>
+                            <div class="flex-1 font-medium text-slate-800 leading-snug break-words whitespace-normal pr-2.5">${task.name}</div>
+                            <div style="width: ${fCfg.dateColWidth}px; font-size: ${Math.max(12, fCfg.fontSizePx - 3)}px;" class="text-center font-mono ${isOverdue ? 'text-rose-600 font-bold' : 'text-slate-500'} shrink-0">${shortStart}~${shortEnd}</div>
+                            <div style="width: ${fCfg.durColWidth}px; font-size: ${Math.max(13, fCfg.fontSizePx - 2)}px;" class="text-right font-mono font-bold text-slate-700 shrink-0">${task.duration}天</div>
+                        </div>
+
+                        <!-- 右側時間軸網格與互動長條 (右側切齊契約竣工線) -->
+                        <div style="width: ${timelineWidth}px;" class="relative flex items-center overflow-hidden">
+                            <!-- 背景格線與週末底色 -->
+                            <div class="absolute inset-0 flex pointer-events-none">
+                                ${dates.map(d => {
+                                    const borderRight = (state.timeScale === 'day' || d.dayNum === 1 || d.weekDay === '日') ? 'border-r border-slate-200/70' : '';
+                                    return `<div style="width: ${dayWidth}px;" class="h-full ${borderRight} ${d.isWeekend ? 'weekend-bg' : ''}"></div>`;
+                                }).join('')}
+                            </div>
+
+                            <!-- 開工起算線 (決標次日) -->
+                            ${startIdx >= 0 && startIdx < totalTimelineDays ? `
+                                <div style="left: ${startLineLeft}px;" class="absolute top-0 bottom-0 w-[2px] bg-blue-600/70 z-10 pointer-events-none">
+                                    ${idx === 0 ? `<span class="absolute top-0.5 left-1 bg-blue-600 text-white text-[10px] font-bold px-1.5 rounded shadow-sm whitespace-nowrap">開工(決標次日)</span>` : ''}
+                                </div>
+                            ` : ''}
+
+                            <!-- 契約竣工線標記 (最右側紅線) -->
+                            <div style="right: 0px;" class="absolute top-0 bottom-0 w-[2px] bg-rose-600 z-20 pointer-events-none">
+                                ${idx === 0 ? `<span class="absolute top-0.5 right-1 bg-rose-600 text-white text-[10px] font-bold px-1.5 rounded shadow-sm whitespace-nowrap">契約竣工線</span>` : ''}
+                            </div>
+
+                            <!-- 可拖曳與縮放的甘特圖時間條 -->
+                            ${clippedBarWidth > 0 ? `
+                                <div id="bar-${task.id}"
+                                     data-task-id="${task.id}"
+                                     data-chart-start="${chartStartStr}"
+                                     data-day-width="${dayWidth}"
+                                     data-timeline-width="${timelineWidth}"
+                                     onmousedown="startGanttDrag(event, '${task.id}', 'move')"
+                                     style="left: ${rawBarLeft}px; width: ${clippedBarWidth}px; height: ${fCfg.barHeight}px; background-color: ${stageObj.color};"
+                                     class="gantt-bar absolute text-white rounded-md shadow-sm flex items-center justify-center px-2.5 cursor-grab z-10 overflow-hidden">
+                                    
+                                    <!-- 超期警示斜紋覆蓋層 -->
+                                    ${isOverdue ? `<div style="width: ${overdueWarnWidth}px;" class="absolute right-0 top-0 bottom-0 overdue-overlay pointer-events-none"></div>` : ''}
+
+                                    <!-- 左側縮放手把 -->
+                                    <div class="resize-handle resize-left" onmousedown="startGanttDrag(event, '${task.id}', 'resize-left')" title="拖曳調整開始日期"></div>
+                                    
+                                    <!-- 條內標籤 (套用所選字體比例) -->
+                                    <span style="font-size: ${fCfg.barFontSizePx}px;" class="relative z-10 font-semibold tracking-tight truncate pointer-events-none drop-shadow-sm">
+                                        ${clippedBarWidth > 95 ? `${task.duration}天 (${shortStart}~${shortEnd})` : `${task.duration}天`}
+                                        ${isOverdue ? ' ⚠' : ''}
+                                    </span>
+
+                                    <!-- 右側縮放手把 -->
+                                    <div class="resize-handle resize-right" onmousedown="startGanttDrag(event, '${task.id}', 'resize-right')" title="拖曳調整結束日期與天數"></div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `</div></div>`;
+            canvas.innerHTML = html;
+        }
+
+        function renderAll() {
+            renderStageColorControls();
+            updateSummary();
+            renderWbsTable();
+            renderGanttChart();
+        }
+
+        // ==========================================
+        // 11. 手動匯入 WBS / 工期天數 / JSON 備份功能
+        // ==========================================
+        function openImportModal() {
+            const modal = document.getElementById('importWbsModal');
+            modal.classList.remove('hidden');
+            switchImportTab('csv');
+            parseImportPreview();
+        }
+
+        function closeImportModal() {
+            document.getElementById('importWbsModal').classList.add('hidden');
+        }
+
+        function switchImportTab(tab) {
+            currentImportTab = tab;
+            const csvBtn = document.getElementById('importTabCsvBtn');
+            const jsonBtn = document.getElementById('importTabJsonBtn');
+            const helpBox = document.getElementById('csvFormatHelpBox');
+            const label = document.getElementById('importTextareaLabel');
+            const textarea = document.getElementById('importRawTextarea');
+
+            if (tab === 'csv') {
+                csvBtn.className = 'px-3.5 py-1.5 rounded-md bg-white text-blue-700 shadow-sm transition flex items-center gap-1.5';
+                jsonBtn.className = 'px-3.5 py-1.5 rounded-md text-slate-600 hover:text-slate-900 transition flex items-center gap-1.5';
+                helpBox.classList.remove('hidden');
+                label.textContent = '請貼上 CSV 內容或直接從 Excel 複製多列資料貼上：';
+                textarea.placeholder = '範例：\n1.1, 專案啟動與現場會勘, 前期設計與送審, 7, , 0\n1.2, 施工圖說與設備型錄送審, 前期設計與送審, 10, 1.1, 5\n2.1, 核心交換器與UPS採購備料, 採購與備料, 25, 1.2, 14';
+            } else {
+                jsonBtn.className = 'px-3.5 py-1.5 rounded-md bg-white text-blue-700 shadow-sm transition flex items-center gap-1.5';
+                csvBtn.className = 'px-3.5 py-1.5 rounded-md text-slate-600 hover:text-slate-900 transition flex items-center gap-1.5';
+                helpBox.classList.add('hidden');
+                label.textContent = '請貼上先前匯出的 JSON 專案備份內容：';
+                textarea.placeholder = '{\n  "projectName": "...",\n  "awardDate": "2026-11-23",\n  "contractDuration": 120,\n  "tasks": [ ... ]\n}';
+            }
+            parseImportPreview();
+        }
+
+        function fillSampleImportText() {
+            const textarea = document.getElementById('importRawTextarea');
+            if (currentImportTab === 'csv') {
+                textarea.value = [
+                    'WBS編號, 工項名稱, 階段分類, 工期天數, 前置工項編號, 開始偏移天數',
+                    '1.1, 開工協調與現場環境勘查, 前期設計與送審, 6, , 0',
+                    '1.2, 施工圖說與主要設備型錄送審, 前期設計與送審, 10, 1.1, 4',
+                    '2.1, 核心伺服器與不斷電系統採購備料, 採購與備料, 28, 1.2, 12',
+                    '2.2, 弱電線材、光纖模組與機櫃備料, 採購與備料, 20, 1.2, 14',
+                    '3.1, 機房高架地板、接地網與機櫃定位, 施工與系統建置, 14, 2.2, 32',
+                    '3.2, 電力幹線配線與 UPS 主機安裝, 施工與系統建置, 15, 2.1, 40',
+                    '3.3, 結構化光纖/網路佈線與門禁監控, 施工與系統建置, 16, 3.1, 46',
+                    '4.1, 單機功能測試與系統整合測試(SIT), 測試驗收與交付, 12, 3.3, 62',
+                    '4.2, 竣工圖說移交、教育訓練與正式驗收, 測試驗收與交付, 10, 4.1, 74'
+                ].join('\n');
+            } else {
+                textarea.value = JSON.stringify(state, null, 2);
+            }
+            parseImportPreview();
+        }
+
+        function downloadSampleCsv() {
+            const csvContent = '\uFEFF' + [
+                'WBS編號,工項名稱,階段分類,工期天數,前置工項編號,開始偏移天數',
+                '1.1,開工協調與現場環境勘查,前期設計與送審,6,,0',
+                '1.2,施工圖說與主要設備型錄送審,前期設計與送審,10,1.1,4',
+                '2.1,核心伺服器與不斷電系統採購備料,採購與備料,28,1.2,12',
+                '2.2,弱電線材與機櫃備料,採購與備料,20,1.2,14',
+                '3.1,機房高架地板與機櫃定位,施工與系統建置,14,2.2,32',
+                '3.2,電力幹線配線與UPS主機安裝,施工與系統建置,15,2.1,40',
+                '3.3,結構化光纖佈線與門禁監控,施工與系統建置,16,3.1,46',
+                '4.1,單機功能測試與系統整合測試(SIT),測試驗收與交付,12,3.3,62',
+                '4.2,竣工圖說移交與正式驗收,測試驗收與交付,10,4.1,74'
+            ].join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'WBS工程時程匯入範本.csv';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showToast('已下載 WBS 匯入範例範本 (.csv)');
+        }
+
+        function exportProjectJson() {
+            const jsonStr = JSON.stringify(state, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const projectName = (state.projectName || '專案備份').trim();
+            link.href = url;
+            link.download = `${projectName}_專案備份_${getTodayStr()}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showToast('已匯出完整專案 JSON 備份檔');
+        }
+
+        function handleImportFileUpload(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const content = e.target.result || '';
+                document.getElementById('importRawTextarea').value = content;
+                if (file.name.toLowerCase().endsWith('.json')) {
+                    switchImportTab('json');
+                } else {
+                    switchImportTab('csv');
+                }
+                showToast(`已讀取檔案「${file.name}」`);
+            };
+            reader.readAsText(file, 'UTF-8');
+            event.target.value = '';
+        }
+
+        // 將中文或英文階段文字對應至系統階段鍵值
+        function mapStageTextToKey(rawStage) {
+            const text = (rawStage || '').trim().toLowerCase();
+            if (!text) return 'construction';
+            if (text.includes('設計') || text.includes('送審') || text.includes('規劃') || text === 'design') return 'design';
+            if (text.includes('採購') || text.includes('備料') || text.includes('設備') || text === 'procurement') return 'procurement';
+            if (text.includes('測試') || text.includes('驗收') || text.includes('交付') || text === 'acceptance') return 'acceptance';
+            return 'construction';
+        }
+
+        function parseCsvTextToTasks(rawText) {
+            const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            if (lines.length === 0) return [];
+
+            const projectStart = getProjectStartDate();
+            const parsedRows = [];
+
+            lines.forEach((line, idx) => {
+                // 自動偵測 Tab (Excel 複製) 或逗號分隔
+                const cols = line.includes('\t')
+                    ? line.split('\t').map(c => c.trim())
+                    : line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+
+                if (cols.length < 2) return;
+
+                // 略過標題列
+                const firstColLower = cols[0].toLowerCase();
+                const secondColLower = (cols[1] || '').toLowerCase();
+                if (idx === 0 && (firstColLower.includes('wbs') || firstColLower.includes('編號') || secondColLower.includes('工項') || secondColLower.includes('名稱'))) {
+                    return;
+                }
+
+                // 若第一欄為純數字或編號格式 (如 1.1)，第二欄為工項名稱；若使用者僅輸入「工項名稱, 工期天數」亦自動相容
+                let code = '';
+                let name = '';
+                let stageRaw = '';
+                let durationVal = 7;
+                let predCode = '';
+                let offsetVal = null;
+
+                if (cols.length === 2) {
+                    name = cols[0];
+                    durationVal = parseInt(cols[1], 10) || 7;
+                } else if (cols.length === 3) {
+                    name = cols[0];
+                    stageRaw = cols[1];
+                    durationVal = parseInt(cols[2], 10) || 7;
+                } else {
+                    code = cols[0];
+                    name = cols[1] || `匯入工項 ${idx + 1}`;
+                    stageRaw = cols[2] || '';
+                    durationVal = parseInt(cols[3], 10) || 7;
+                    predCode = cols[4] || '';
+                    if (cols[5] !== undefined && cols[5] !== '' && !isNaN(parseInt(cols[5], 10))) {
+                        offsetVal = parseInt(cols[5], 10);
+                    }
+                }
+
+                const displayName = code ? `${code} ${name}` : name;
+                const stageKey = mapStageTextToKey(stageRaw);
+                const duration = Math.max(1, durationVal);
+
+                parsedRows.push({
+                    tempId: 'imp_' + Date.now() + '_' + idx,
+                    code: code,
+                    name: displayName,
+                    stage: stageKey,
+                    duration: duration,
+                    predCode: predCode,
+                    offset: offsetVal
+                });
+            });
+
+            // 建立編號對照表以解析前置工項與起訖日期
+            const codeToTask = {};
+            parsedRows.forEach(r => {
+                if (r.code) codeToTask[r.code] = r;
+            });
+
+            let rollingStart = projectStart;
+            const finalTasks = [];
+
+            parsedRows.forEach(r => {
+                let startDate = rollingStart;
+                let predecessorId = '';
+
+                if (r.predCode && codeToTask[r.predCode]) {
+                    predecessorId = codeToTask[r.predCode].tempId;
+                }
+
+                if (r.offset !== null) {
+                    startDate = snapToWorkingDay(addCalendarDays(projectStart, Math.max(0, r.offset)));
+                } else if (predecessorId) {
+                    const predDone = finalTasks.find(t => t.id === predecessorId);
+                    if (predDone) {
+                        startDate = snapToWorkingDay(addCalendarDays(predDone.endDate, 1));
+                    }
+                }
+
+                const endDate = calculateEndDate(startDate, r.duration);
+                rollingStart = snapToWorkingDay(addCalendarDays(endDate, 1));
+
+                finalTasks.push({
+                    id: r.tempId,
+                    name: r.name,
+                    stage: r.stage,
+                    startDate: startDate,
+                    duration: r.duration,
+                    endDate: endDate,
+                    predecessorId: predecessorId,
+                    lag: 0
+                });
+            });
+
+            return finalTasks;
+        }
+
+        function parseImportPreview() {
+            const rawText = (document.getElementById('importRawTextarea').value || '').trim();
+            const badge = document.getElementById('importPreviewBadge');
+            const container = document.getElementById('importPreviewContainer');
+
+            if (!rawText) {
+                parsedImportCache = null;
+                badge.textContent = '尚未偵測到有效工項';
+                badge.className = 'text-xs font-semibold text-slate-500';
+                container.innerHTML = '請在上方輸入或上傳 WBS 資料以預覽解析結果...';
+                return;
+            }
+
+            if (currentImportTab === 'json') {
+                try {
+                    const obj = JSON.parse(rawText);
+                    if (!obj || !Array.isArray(obj.tasks) || obj.tasks.length === 0) {
+                        throw new Error('JSON 缺少有效的 tasks 陣列');
+                    }
+                    parsedImportCache = { type: 'json', data: obj };
+                    badge.textContent = `JSON 驗證成功：共 ${obj.tasks.length} 項工項`;
+                    badge.className = 'text-xs font-bold text-emerald-600';
+                    container.innerHTML = `
+                        <div class="space-y-1 text-slate-700">
+                            <div><strong>專案名稱：</strong>${obj.projectName || '未指定'}</div>
+                            <div><strong>決標基準日：</strong>${obj.awardDate || '維持目前設定'} ｜ <strong>契約工期：</strong>${obj.contractDuration || 120} 天</div>
+                            <div class="pt-1 text-emerald-700 font-semibold">點擊下方「確認匯入」即可完整還原此專案設定與時程。</div>
+                        </div>
+                    `;
+                } catch (err) {
+                    parsedImportCache = null;
+                    badge.textContent = 'JSON 格式錯誤';
+                    badge.className = 'text-xs font-bold text-rose-600';
+                    container.innerHTML = `<span class="text-rose-600 font-medium">無法解析 JSON：${err.message}</span>`;
+                }
+            } else {
+                const tasks = parseCsvTextToTasks(rawText);
+                if (tasks.length === 0) {
+                    parsedImportCache = null;
+                    badge.textContent = '尚未偵測到有效工項';
+                    badge.className = 'text-xs font-semibold text-slate-500';
+                    container.innerHTML = '請確認每列至少包含「工項名稱」與「工期天數」。';
+                    return;
+                }
+
+                parsedImportCache = { type: 'csv', tasks: tasks };
+                badge.textContent = `成功解析 ${tasks.length} 項 WBS 工項`;
+                badge.className = 'text-xs font-bold text-emerald-600';
+
+                container.innerHTML = `
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 text-slate-500">
+                                <th class="py-1 pr-2">#</th>
+                                <th class="py-1 pr-2">WBS 工項名稱</th>
+                                <th class="py-1 pr-2">階段分類</th>
+                                <th class="py-1 pr-2">預估起訖日</th>
+                                <th class="py-1 text-right">工期</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            ${tasks.map((t, i) => {
+                                const st = state.stages[t.stage] || state.stages.construction;
+                                return `
+                                    <tr>
+                                        <td class="py-1 pr-2 font-mono text-slate-400">${i + 1}</td>
+                                        <td class="py-1 pr-2 font-medium text-slate-800">${t.name}</td>
+                                        <td class="py-1 pr-2">
+                                            <span style="background-color: ${st.color};" class="inline-block w-2 h-2 rounded-full mr-1"></span>${st.label}
+                                        </td>
+                                        <td class="py-1 pr-2 font-mono text-slate-600">${t.startDate} ~ ${t.endDate}</td>
+                                        <td class="py-1 text-right font-mono font-bold text-blue-700">${t.duration} 天</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+        }
+
+        function confirmExecuteImport() {
+            if (!parsedImportCache) {
+                showToast('請先輸入有效的 WBS 或 JSON 資料', 'warning');
+                return;
+            }
+
+            const mergeMode = document.querySelector('input[name="importMergeMode"]:checked')?.value || 'replace';
+
+            if (parsedImportCache.type === 'json') {
+                const obj = parsedImportCache.data;
+                if (mergeMode === 'replace') {
+                    state.projectName = obj.projectName || state.projectName;
+                    state.awardDate = obj.awardDate || state.awardDate;
+                    state.contractDuration = obj.contractDuration || state.contractDuration;
+                    state.dayMode = obj.dayMode || state.dayMode;
+                    state.timeScale = obj.timeScale || state.timeScale;
+                    state.fontSize = FONT_SIZE_CONFIG[obj.fontSize] ? obj.fontSize : state.fontSize;
+                    if (obj.stages) {
+                        state.stages = { ...JSON.parse(JSON.stringify(DEFAULT_STAGES)), ...obj.stages };
+                    }
+                    state.tasks = obj.tasks;
+
+                    document.getElementById('projectName').value = state.projectName;
+                    document.getElementById('awardDate').value = state.awardDate;
+                    document.getElementById('contractDuration').value = state.contractDuration;
+                    updateDayModeButtons();
+                    updateTimeScaleButtons();
+                    updateFontSizeButtons();
+                } else {
+                    state.tasks = state.tasks.concat(obj.tasks);
+                }
+                showToast(`已成功還原 JSON 專案（共 ${obj.tasks.length} 項工項）`);
+            } else {
+                const importedTasks = parsedImportCache.tasks;
+                if (mergeMode === 'replace') {
+                    state.tasks = importedTasks;
+                } else {
+                    state.tasks = state.tasks.concat(importedTasks);
+                }
+                showToast(`已成功匯入 ${importedTasks.length} 項 WBS 工項並更新甘特圖`);
+            }
+
+            closeImportModal();
+            saveToStorage();
+            renderAll();
+        }
+
+        // ==========================================
+        // 12. 甘特圖滑鼠拖曳平移與雙端拉伸微調互動
+        // ==========================================
+        function startGanttDrag(event, taskId, mode) {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+
+            const task = state.tasks.find(t => t.id === taskId);
+            const barEl = document.getElementById(`bar-${taskId}`);
+            if (!task || !barEl) return;
+
+            const dayWidth = parseFloat(barEl.dataset.dayWidth) || 16;
+            const chartStartStr = barEl.dataset.chartStart;
+            const timelineWidth = parseFloat(barEl.dataset.timelineWidth) || 800;
+
+            barEl.classList.add('dragging');
+
+            dragState = {
+                taskId,
+                mode, // 'move', 'resize-left', 'resize-right'
+                startX: event.clientX,
+                dayWidth,
+                chartStartStr,
+                timelineWidth,
+                origStartDate: task.startDate,
+                origEndDate: task.endDate,
+                origDuration: task.duration,
+                currentStartDate: task.startDate,
+                currentEndDate: task.endDate,
+                currentDuration: task.duration
+            };
+
+            updateDragTooltip(event.clientX, event.clientY, task.name, task.startDate, task.endDate, task.duration);
+            document.addEventListener('mousemove', onGanttDragMove);
+            document.addEventListener('mouseup', onGanttDragEnd);
+        }
+
+        function onGanttDragMove(event) {
+            if (!dragState) return;
+            const task = state.tasks.find(t => t.id === dragState.taskId);
+            const barEl = document.getElementById(`bar-${dragState.taskId}`);
+            if (!task || !barEl) return;
+
+            const deltaPx = event.clientX - dragState.startX;
+            const deltaDays = Math.round(deltaPx / dragState.dayWidth);
+            const projectStart = getProjectStartDate();
+            const contractEndStr = getContractCompletionDate();
+
+            let newStart = dragState.origStartDate;
+            let newEnd = dragState.origEndDate;
+            let newDur = dragState.origDuration;
+
+            if (dragState.mode === 'move') {
+                const candidateStart = addCalendarDays(dragState.origStartDate, deltaDays);
+                newStart = diffCalendarDays(projectStart, candidateStart) < 0 ? projectStart : snapToWorkingDay(candidateStart);
+                newEnd = calculateEndDate(newStart, dragState.origDuration);
+                newDur = dragState.origDuration;
+            } else if (dragState.mode === 'resize-left') {
+                let candidateStart = addCalendarDays(dragState.origStartDate, deltaDays);
+                if (diffCalendarDays(projectStart, candidateStart) < 0) candidateStart = projectStart;
+                candidateStart = snapToWorkingDay(candidateStart);
+                if (parseDate(candidateStart) > parseDate(dragState.origEndDate)) {
+                    candidateStart = dragState.origEndDate;
+                }
+                newStart = candidateStart;
+                newEnd = dragState.origEndDate;
+                newDur = calculateDuration(newStart, newEnd);
+            } else if (dragState.mode === 'resize-right') {
+                newStart = dragState.origStartDate;
+                newDur = Math.max(1, dragState.origDuration + deltaDays);
+                newEnd = calculateEndDate(newStart, newDur);
+            }
+
+            dragState.currentStartDate = newStart;
+            dragState.currentEndDate = newEnd;
+            dragState.currentDuration = newDur;
+
+            // 即時更新視覺位置與長度 (切齊契約竣工線)
+            const startOffsetDays = diffCalendarDays(dragState.chartStartStr, newStart);
+            const spanDays = diffCalendarDays(newStart, newEnd) + 1;
+            const rawLeft = startOffsetDays * dragState.dayWidth;
+            const rawWidth = Math.max(dragState.dayWidth, spanDays * dragState.dayWidth);
+            const clippedWidth = Math.max(12, Math.min(rawWidth, dragState.timelineWidth - rawLeft));
+
+            barEl.style.left = `${rawLeft}px`;
+            barEl.style.width = `${clippedWidth}px`;
+
+            const labelSpan = barEl.querySelector('span');
+            if (labelSpan) {
+                const shortS = newStart.slice(5);
+                const shortE = newEnd.slice(5);
+                const isOver = newEnd > contractEndStr;
+                labelSpan.textContent = (clippedWidth > 95 ? `${newDur}天 (${shortS}~${shortE})` : `${newDur}天`) + (isOver ? ' ⚠' : '');
+            }
+
+            updateDragTooltip(event.clientX, event.clientY, task.name, newStart, newEnd, newDur);
+        }
+
+        function onGanttDragEnd() {
+            if (!dragState) return;
+            const task = state.tasks.find(t => t.id === dragState.taskId);
+            const barEl = document.getElementById(`bar-${dragState.taskId}`);
+            if (barEl) barEl.classList.remove('dragging');
+
+            if (task) {
+                task.startDate = dragState.currentStartDate;
+                task.endDate = dragState.currentEndDate;
+                task.duration = dragState.currentDuration;
+            }
+
+            dragState = null;
+            document.getElementById('dragTooltip').classList.add('hidden');
+            document.removeEventListener('mousemove', onGanttDragMove);
+            document.removeEventListener('mouseup', onGanttDragEnd);
+
+            saveToStorage();
+            renderAll();
+        }
+
+        function updateDragTooltip(clientX, clientY, title, startStr, endStr, duration) {
+            const tooltip = document.getElementById('dragTooltip');
+            const contractEndStr = getContractCompletionDate();
+            const isOverdue = endStr > contractEndStr;
+
+            document.getElementById('tooltipTitle').textContent = title;
+            document.getElementById('tooltipDates').textContent = `${startStr} ~ ${endStr}`;
+            document.getElementById('tooltipDuration').textContent = `工期：${duration} ${state.dayMode === 'calendar' ? '日曆天' : '工作天'}`;
+
+            const warnEl = document.getElementById('tooltipOverdueWarn');
+            if (isOverdue) {
+                warnEl.classList.remove('hidden');
+            } else {
+                warnEl.classList.add('hidden');
+            }
+
+            tooltip.classList.remove('hidden');
+            const left = Math.min(window.innerWidth - 230, clientX + 14);
+            const top = Math.max(12, clientY - 75);
+            tooltip.style.left = `${left}px`;
+            tooltip.style.top = `${top}px`;
+        }
+
+        // ==========================================
+        // 13. 原生 HTML5 Canvas 高解析度匯出 PNG / JPG 引擎
+        // ==========================================
+        function drawRoundedRect(ctx, x, y, w, h, r) {
+            const radius = Math.min(r, w / 2, h / 2);
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.arcTo(x + w, y, x + w, y + h, radius);
+            ctx.arcTo(x + w, y + h, x, y + h, radius);
+            ctx.arcTo(x, y + h, x, y, radius);
+            ctx.arcTo(x, y, x + w, y, radius);
+            ctx.closePath();
+        }
+
+        function truncateCanvasText(ctx, text, maxWidth) {
+            if (ctx.measureText(text).width <= maxWidth) return text;
+            let trimmed = text;
+            while (trimmed.length > 0 && ctx.measureText(trimmed + '…').width > maxWidth) {
+                trimmed = trimmed.slice(0, -1);
+            }
+            return trimmed + '…';
+        }
+
+        // 支援中英文混合自動多列換行 (不截斷、完整呈現 WBS 工項名稱)
+        function wrapCanvasText(ctx, text, maxWidth) {
+            const str = String(text || '');
+            if (!str) return [''];
+            if (maxWidth <= 20) return [str];
+
+            const lines = [];
+            const paragraphs = str.split(/\r?\n/);
+
+            paragraphs.forEach(para => {
+                if (para === '') {
+                    lines.push('');
+                    return;
+                }
+                let currentLine = '';
+                const chars = Array.from(para);
+                for (let i = 0; i < chars.length; i++) {
+                    const ch = chars[i];
+                    const testLine = currentLine + ch;
+                    if (ctx.measureText(testLine).width > maxWidth && currentLine.length > 0) {
+                        lines.push(currentLine);
+                        currentLine = ch;
+                    } else {
+                        currentLine = testLine;
+                    }
+                }
+                if (currentLine.length > 0) {
+                    lines.push(currentLine);
+                }
+            });
+
+            return lines.length > 0 ? lines : [''];
+        }
+
+        function createWeekendPattern(ctx) {
+            const pCanvas = document.createElement('canvas');
+            pCanvas.width = 12;
+            pCanvas.height = 12;
+            const pCtx = pCanvas.getContext('2d');
+            pCtx.fillStyle = 'rgba(241, 245, 249, 0.75)';
+            pCtx.fillRect(0, 0, 12, 12);
+            pCtx.strokeStyle = 'rgba(203, 213, 225, 0.65)';
+            pCtx.lineWidth = 2;
+            pCtx.beginPath();
+            pCtx.moveTo(-2, 12);
+            pCtx.lineTo(12, -2);
+            pCtx.moveTo(0, 14);
+            pCtx.lineTo(14, 0);
+            pCtx.stroke();
+            return ctx.createPattern(pCanvas, 'repeat');
+        }
+
+        function createOverduePattern(ctx) {
+            const pCanvas = document.createElement('canvas');
+            pCanvas.width = 14;
+            pCanvas.height = 14;
+            const pCtx = pCanvas.getContext('2d');
+            pCtx.fillStyle = '#dc2626';
+            pCtx.fillRect(0, 0, 14, 14);
+            pCtx.strokeStyle = '#fef2f2';
+            pCtx.lineWidth = 3;
+            pCtx.beginPath();
+            pCtx.moveTo(-2, 14);
+            pCtx.lineTo(14, -2);
+            pCtx.moveTo(0, 16);
+            pCtx.lineTo(16, 0);
+            pCtx.stroke();
+            return ctx.createPattern(pCanvas, 'repeat');
+        }
+
+        function renderGanttToCanvas() {
+            const fCfg = FONT_SIZE_CONFIG[state.fontSize] || FONT_SIZE_CONFIG[16];
+            const scaleMultiplier = state.fontSize === 26 ? 1.35 : (state.fontSize === 20 ? 1.15 : 1);
+            const dayWidth = Math.round(SCALE_CONFIG[state.timeScale].dayWidth * scaleMultiplier);
+            const leftColWidth = fCfg.leftColWidth;
+
+            const awardDateStr = state.awardDate || getTodayStr();
+            const projectStartStr = getProjectStartDate();
+            const contractEndStr = getContractCompletionDate();
+            let chartStartStr = projectStartStr;
+            state.tasks.forEach(t => {
+                if (t.startDate < chartStartStr) chartStartStr = t.startDate;
+            });
+
+            // 右側嚴格切齊契約竣工日
+            const totalTimelineDays = Math.max(1, diffCalendarDays(chartStartStr, contractEndStr) + 1);
+            const timelineWidth = totalTimelineDays * dayWidth;
+            const totalWidth = leftColWidth + timelineWidth;
+
+            const fontFamily = '"Inter", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+
+            // 建立離屏測量 Context，預先計算每個 WBS 工項的多列換行文字與動態列高
+            const measureCanvas = document.createElement('canvas');
+            const mCtx = measureCanvas.getContext('2d');
+            mCtx.font = `600 ${fCfg.fontSizePx}px ${fontFamily}`;
+
+            const nameMaxW = leftColWidth - fCfg.dateColWidth - fCfg.durColWidth - 48;
+            const lineHeight = Math.round(fCfg.fontSizePx * 1.38);
+            const verticalPadding = 18;
+
+            const taskLayouts = state.tasks.map(task => {
+                const wrappedLines = wrapCanvasText(mCtx, task.name, nameMaxW);
+                const textBlockHeight = wrappedLines.length * lineHeight;
+                const dynamicRowHeight = Math.max(fCfg.rowHeight, textBlockHeight + verticalPadding);
+                return {
+                    task,
+                    wrappedLines,
+                    lineHeight,
+                    rowHeight: dynamicRowHeight
+                };
+            });
+
+            const bannerHeight = 82;
+            const tableHeaderHeight = fCfg.topHeaderHeight + fCfg.subHeaderHeight;
+            const bodyHeight = taskLayouts.reduce((sum, item) => sum + item.rowHeight, 0);
+            const legendHeight = 48;
+            const totalHeight = bannerHeight + tableHeaderHeight + bodyHeight + legendHeight;
+
+            // Retina 2x 解析度 (若超寬則自動微調 DPR 避免瀏覽器 Canvas 上限)
+            const maxDim = Math.max(totalWidth, totalHeight);
+            const dpr = maxDim * 2 > 16000 ? 1 : 2;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = totalWidth * dpr;
+            canvas.height = totalHeight * dpr;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+
+            // 1. 整體純白底色 (確保 JPG 匯出不變黑)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, totalWidth, totalHeight);
+
+            // 2. 頂部專案摘要表頭 Banner
+            const headerGrad = ctx.createLinearGradient(0, 0, totalWidth, 0);
+            headerGrad.addColorStop(0, '#0f172a');
+            headerGrad.addColorStop(0.5, '#172033');
+            headerGrad.addColorStop(1, '#1e293b');
+            ctx.fillStyle = headerGrad;
+            ctx.fillRect(0, 0, totalWidth, bannerHeight);
+
+            ctx.fillStyle = '#60a5fa';
+            ctx.font = `700 11px ${fontFamily}`;
+            ctx.textBaseline = 'top';
+            ctx.fillText('PROJECT MASTER SCHEDULE / 專案時程總表', 24, 16);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `700 20px ${fontFamily}`;
+            const maxTitleW = Math.max(240, totalWidth - 520);
+            ctx.fillText(truncateCanvasText(ctx, state.projectName || '未命名工程專案', maxTitleW), 24, 36);
+
+            // 右側 KPI 資訊欄 (標示決標日與開工次日)
+            const unitText = state.dayMode === 'calendar' ? '日曆天' : '工作天';
+            let actualEndDate = projectStartStr;
+            if (state.tasks.length > 0) {
+                actualEndDate = state.tasks.reduce((max, t) => t.endDate > max ? t.endDate : max, state.tasks[0].endDate);
+            }
+            const isProjectOverdue = actualEndDate > contractEndStr;
+
+            const kpis = [
+                { label: '決標日 / 開工(次日)', value: `${awardDateStr} / ${projectStartStr.slice(5)}`, labelColor: '#94a3b8', valColor: '#ffffff' },
+                { label: '契約工期', value: `${state.contractDuration} ${unitText}`, labelColor: '#94a3b8', valColor: '#fbbf24' },
+                { label: '契約竣工日', value: contractEndStr, labelColor: '#fda4af', valColor: '#fb7185' },
+                { label: '預估實際完工日', value: actualEndDate, labelColor: '#94a3b8', valColor: isProjectOverdue ? '#fb7185' : '#34d399' }
+            ];
+
+            if (totalWidth >= 780) {
+                let kpiX = totalWidth - 24;
+                for (let i = kpis.length - 1; i >= 0; i--) {
+                    const item = kpis[i];
+                    ctx.font = `700 15px monospace`;
+                    const valW = ctx.measureText(item.value).width;
+                    ctx.font = `500 11px ${fontFamily}`;
+                    const lblW = ctx.measureText(item.label).width;
+                    const blockW = Math.max(valW, lblW);
+
+                    kpiX -= blockW;
+                    ctx.fillStyle = item.labelColor;
+                    ctx.font = `500 11px ${fontFamily}`;
+                    ctx.fillText(item.label, kpiX, 20);
+
+                    ctx.fillStyle = item.valColor;
+                    ctx.font = `700 15px monospace`;
+                    ctx.fillText(item.value, kpiX, 39);
+
+                    if (i > 0) {
+                        kpiX -= 16;
+                        ctx.strokeStyle = '#334155';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(kpiX, 20);
+                        ctx.lineTo(kpiX, 58);
+                        ctx.stroke();
+                        kpiX -= 16;
+                    }
+                }
+            }
+
+            // 3. 建立時間軸刻度資料
+            const dates = [];
+            const topHeaders = [];
+            const subHeaders = [];
+            let curTopGroup = null;
+            let curWeekGroup = null;
+            let weekCounter = 1;
+
+            for (let i = 0; i < totalTimelineDays; i++) {
+                const dStr = addCalendarDays(chartStartStr, i);
+                const dObj = parseDate(dStr);
+                const y = dObj.getFullYear();
+                const m = dObj.getMonth() + 1;
+                const dNum = dObj.getDate();
+                const wDay = dObj.getDay();
+
+                dates.push({
+                    index: i,
+                    dateStr: dStr,
+                    dayNum: dNum,
+                    weekDay: ['日', '一', '二', '三', '四', '五', '六'][wDay],
+                    isWeekend: isWeekend(dObj),
+                    isProjectStart: dStr === projectStartStr,
+                    isContractEnd: dStr === contractEndStr
+                });
+
+                const topLabel = state.timeScale === 'month' ? `${y}年` : `${y}年${m}月`;
+                if (!curTopGroup || curTopGroup.label !== topLabel) {
+                    curTopGroup = { label: topLabel, count: 0 };
+                    topHeaders.push(curTopGroup);
+                }
+                curTopGroup.count++;
+
+                if (state.timeScale === 'day') {
+                    subHeaders.push({
+                        label: `${dNum}`,
+                        subLabel: ['日', '一', '二', '三', '四', '五', '六'][wDay],
+                        count: 1,
+                        isWeekend: isWeekend(dObj),
+                        isProjectStart: dStr === projectStartStr,
+                        isContractEnd: dStr === contractEndStr
+                    });
+                } else if (state.timeScale === 'week') {
+                    if (i === 0 || wDay === 1) {
+                        const mmdd = `${String(m).padStart(2, '0')}/${String(dNum).padStart(2, '0')}`;
+                        curWeekGroup = { label: `W${weekCounter} (${mmdd})`, count: 0 };
+                        subHeaders.push(curWeekGroup);
+                        weekCounter++;
+                    }
+                    curWeekGroup.count++;
+                } else {
+                    if (i === 0 || dNum === 1) {
+                        curWeekGroup = { label: `${m}月`, count: 0 };
+                        subHeaders.push(curWeekGroup);
+                    }
+                    curWeekGroup.count++;
+                }
+            }
+
+            // 4. 繪製表格雙層表頭
+            const thY = bannerHeight;
+            ctx.fillStyle = '#f1f5f9';
+            ctx.fillRect(0, thY, totalWidth, tableHeaderHeight);
+
+            const headerFontSize = Math.max(13, fCfg.fontSizePx - 3);
+            const subHeaderFontSize = Math.max(12, fCfg.fontSizePx - 4);
+
+            // 左側表頭文字
+            ctx.fillStyle = '#334155';
+            ctx.font = `700 ${headerFontSize}px ${fontFamily}`;
+            ctx.textBaseline = 'bottom';
+            const thTextY = thY + tableHeaderHeight - 10;
+            ctx.fillText('WBS 工項名稱', 16, thTextY);
+
+            ctx.textAlign = 'center';
+            ctx.fillText('起訖期間', leftColWidth - fCfg.durColWidth - fCfg.dateColWidth / 2 - 12, thTextY);
+            ctx.textAlign = 'right';
+            ctx.fillText('天數', leftColWidth - 14, thTextY);
+            ctx.textAlign = 'left';
+
+            // 第一層時間表頭
+            let curX = leftColWidth;
+            ctx.textBaseline = 'middle';
+            topHeaders.forEach(th => {
+                const w = th.count * dayWidth;
+                ctx.fillStyle = '#e2e8f0';
+                ctx.fillRect(curX, thY, w, fCfg.topHeaderHeight);
+                ctx.strokeStyle = '#cbd5e1';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(curX, thY, w, fCfg.topHeaderHeight);
+
+                ctx.fillStyle = '#334155';
+                ctx.font = `700 ${headerFontSize}px ${fontFamily}`;
+                ctx.fillText(truncateCanvasText(ctx, th.label, w - 10), curX + 8, thY + fCfg.topHeaderHeight / 2);
+                curX += w;
+            });
+
+            // 第二層時間表頭
+            curX = leftColWidth;
+            const subY = thY + fCfg.topHeaderHeight;
+            subHeaders.forEach(sh => {
+                const w = sh.count * dayWidth;
+                if (state.timeScale === 'day') {
+                    ctx.fillStyle = sh.isContractEnd ? '#ffe4e6' : (sh.isProjectStart ? '#dbeafe' : (sh.isWeekend ? '#e2e8f0' : '#f8fafc'));
+                } else {
+                    ctx.fillStyle = '#f8fafc';
+                }
+                ctx.fillRect(curX, subY, w, fCfg.subHeaderHeight);
+                ctx.strokeStyle = '#cbd5e1';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(curX, subY, w, fCfg.subHeaderHeight);
+
+                ctx.textAlign = 'center';
+                if (state.timeScale === 'day') {
+                    ctx.fillStyle = sh.isContractEnd ? '#be123c' : (sh.isProjectStart ? '#1d4ed8' : (sh.isWeekend ? '#94a3b8' : '#475569'));
+                    ctx.font = `700 ${subHeaderFontSize}px ${fontFamily}`;
+                    ctx.fillText(sh.label, curX + w / 2, subY + fCfg.subHeaderHeight * 0.36);
+                    ctx.font = `400 10px ${fontFamily}`;
+                    ctx.fillText(sh.subLabel, curX + w / 2, subY + fCfg.subHeaderHeight * 0.76);
+                } else if (w >= 34) {
+                    ctx.fillStyle = '#334155';
+                    ctx.font = `600 ${subHeaderFontSize}px ${fontFamily}`;
+                    ctx.fillText(truncateCanvasText(ctx, sh.label, w - 6), curX + w / 2, subY + fCfg.subHeaderHeight / 2);
+                }
+                ctx.textAlign = 'left';
+                curX += w;
+            });
+
+            // 表頭底線
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(0, thY + tableHeaderHeight);
+            ctx.lineTo(totalWidth, thY + tableHeaderHeight);
+            ctx.stroke();
+
+            // 5. 繪製任務列主體 (動態列高 + WBS 多列完整換行)
+            const weekendPattern = createWeekendPattern(ctx);
+            const overduePattern = createOverduePattern(ctx);
+            const bodyStartY = thY + tableHeaderHeight;
+            let currentRowY = bodyStartY;
+
+            taskLayouts.forEach((layout, idx) => {
+                const { task, wrappedLines, lineHeight: rowLineH, rowHeight } = layout;
+                const rowY = currentRowY;
+                const stageObj = state.stages[task.stage] || state.stages.construction;
+                const isOverdue = task.endDate > contractEndStr;
+
+                // 列背景
+                ctx.fillStyle = idx % 2 === 1 ? '#fcfdfe' : '#ffffff';
+                ctx.fillRect(0, rowY, totalWidth, rowHeight);
+
+                // 右側週末背景與垂直格線
+                dates.forEach(d => {
+                    const cellX = leftColWidth + d.index * dayWidth;
+                    if (d.isWeekend && weekendPattern) {
+                        ctx.fillStyle = weekendPattern;
+                        ctx.fillRect(cellX, rowY, dayWidth, rowHeight);
+                    }
+                    if (state.timeScale === 'day' || d.dayNum === 1 || d.weekDay === '日') {
+                        ctx.strokeStyle = '#e2e8f0';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(cellX + dayWidth, rowY);
+                        ctx.lineTo(cellX + dayWidth, rowY + rowHeight);
+                        ctx.stroke();
+                    }
+                });
+
+                // 左側階段圓點 (垂直置中)
+                const centerY = rowY + rowHeight / 2;
+                ctx.fillStyle = stageObj.color;
+                ctx.beginPath();
+                ctx.arc(20, centerY, 5.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 多列完整繪製 WBS 名稱 (垂直置中於整列高度)
+                ctx.fillStyle = '#1e293b';
+                ctx.font = `600 ${fCfg.fontSizePx}px ${fontFamily}`;
+                ctx.textBaseline = 'middle';
+                ctx.textAlign = 'left';
+
+                const totalTextHeight = wrappedLines.length * rowLineH;
+                const firstLineCenterY = centerY - totalTextHeight / 2 + rowLineH / 2;
+                wrappedLines.forEach((lineStr, lineIdx) => {
+                    ctx.fillText(lineStr, 34, firstLineCenterY + lineIdx * rowLineH);
+                });
+
+                // 起訖日期與天數 (垂直置中)
+                const shortStart = task.startDate.slice(5);
+                const shortEnd = task.endDate.slice(5);
+                ctx.textAlign = 'center';
+                ctx.fillStyle = isOverdue ? '#e11d48' : '#64748b';
+                ctx.font = `${isOverdue ? '700' : '500'} ${Math.max(12, fCfg.fontSizePx - 3)}px monospace`;
+                ctx.fillText(`${shortStart}~${shortEnd}`, leftColWidth - fCfg.durColWidth - fCfg.dateColWidth / 2 - 12, centerY);
+
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#334155';
+                ctx.font = `700 ${Math.max(13, fCfg.fontSizePx - 2)}px monospace`;
+                ctx.fillText(`${task.duration}天`, leftColWidth - 14, centerY);
+                ctx.textAlign = 'left';
+
+                // 甘特圖時間條 (嚴格切齊右側契約竣工線，垂直置中於動態列高)
+                const startOffsetDays = diffCalendarDays(chartStartStr, task.startDate);
+                const spanCalendarDays = diffCalendarDays(task.startDate, task.endDate) + 1;
+                const rawBarLeft = startOffsetDays * dayWidth;
+                const rawBarWidth = Math.max(dayWidth, spanCalendarDays * dayWidth);
+                const maxAllowedWidth = Math.max(0, timelineWidth - rawBarLeft);
+                const clippedBarWidth = Math.min(rawBarWidth, maxAllowedWidth);
+
+                if (clippedBarWidth > 0) {
+                    const barX = leftColWidth + rawBarLeft;
+                    const barY = rowY + (rowHeight - fCfg.barHeight) / 2;
+
+                    ctx.save();
+                    drawRoundedRect(ctx, barX, barY, clippedBarWidth, fCfg.barHeight, 6);
+                    ctx.fillStyle = stageObj.color;
+                    ctx.fill();
+                    ctx.clip();
+
+                    // 若超出契約竣工日，繪製斜紋超期警示
+                    if (isOverdue && overduePattern) {
+                        const overdueStartDays = Math.max(0, diffCalendarDays(task.startDate, contractEndStr));
+                        const normalPartWidth = Math.max(0, overdueStartDays * dayWidth);
+                        const warnWidth = Math.max(8, clippedBarWidth - normalPartWidth);
+                        ctx.fillStyle = overduePattern;
+                        ctx.fillRect(barX + clippedBarWidth - warnWidth, barY, warnWidth, fCfg.barHeight);
+                    }
+
+                    // 時間條文字
+                    const barText = (clippedBarWidth > 95 ? `${task.duration}天 (${shortStart}~${shortEnd})` : `${task.duration}天`) + (isOverdue ? ' ⚠' : '');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = `700 ${fCfg.barFontSizePx}px ${fontFamily}`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(truncateCanvasText(ctx, barText, clippedBarWidth - 8), barX + clippedBarWidth / 2, barY + fCfg.barHeight / 2);
+                    ctx.restore();
+                }
+
+                // 列底分隔線
+                ctx.strokeStyle = '#e2e8f0';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, rowY + rowHeight);
+                ctx.lineTo(totalWidth, rowY + rowHeight);
+                ctx.stroke();
+
+                currentRowY += rowHeight;
+            });
+
+            // 6. 左側固定欄垂直分隔線
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(leftColWidth, bannerHeight);
+            ctx.lineTo(leftColWidth, bodyStartY + bodyHeight);
+            ctx.stroke();
+
+            // 7. 開工起算線 (決標次日)
+            const startIdx = diffCalendarDays(chartStartStr, projectStartStr);
+            if (startIdx >= 0 && startIdx < totalTimelineDays) {
+                const startX = leftColWidth + startIdx * dayWidth;
+                ctx.strokeStyle = '#2563eb';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(startX, bodyStartY);
+                ctx.lineTo(startX, bodyStartY + bodyHeight);
+                ctx.stroke();
+
+                drawRoundedRect(ctx, startX + 4, bodyStartY + 4, 76, 18, 4);
+                ctx.fillStyle = '#2563eb';
+                ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.font = `700 10px ${fontFamily}`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('開工(決標次日)', startX + 42, bodyStartY + 13);
+                ctx.textAlign = 'left';
+            }
+
+            // 8. 最右側「契約竣工線」紅線與標籤
+            const endLineX = totalWidth - 1;
+            ctx.strokeStyle = '#e11d48';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(endLineX, bannerHeight);
+            ctx.lineTo(endLineX, bodyStartY + bodyHeight);
+            ctx.stroke();
+
+            drawRoundedRect(ctx, endLineX - 66, bodyStartY + 4, 62, 18, 4);
+            ctx.fillStyle = '#e11d48';
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `700 10px ${fontFamily}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('契約竣工線', endLineX - 35, bodyStartY + 13);
+            ctx.textAlign = 'left';
+
+            // 9. 底部動態圖例列
+            const legendY = bodyStartY + bodyHeight;
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillRect(0, legendY, totalWidth, legendHeight);
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, legendY);
+            ctx.lineTo(totalWidth, legendY);
+            ctx.stroke();
+
+            let lx = 20;
+            const ly = legendY + legendHeight / 2;
+            ctx.fillStyle = '#334155';
+            ctx.font = `700 12px ${fontFamily}`;
+            ctx.textBaseline = 'middle';
+            ctx.fillText('階段分類圖例：', lx, ly);
+            lx += ctx.measureText('階段分類圖例：').width + 8;
+
+            Object.values(state.stages).forEach(st => {
+                drawRoundedRect(ctx, lx, ly - 6, 13, 13, 3);
+                ctx.fillStyle = st.color;
+                ctx.fill();
+                lx += 18;
+
+                ctx.fillStyle = '#334155';
+                ctx.font = `600 12px ${fontFamily}`;
+                ctx.fillText(st.label, lx, ly);
+                lx += ctx.measureText(st.label).width + 18;
+            });
+
+            // 右側圖例說明
+            if (totalWidth >= 900) {
+                let rx = totalWidth - 20;
+                ctx.font = `600 12px ${fontFamily}`;
+
+                const w3 = ctx.measureText('週末例假日').width;
+                rx -= w3;
+                ctx.fillStyle = '#475569';
+                ctx.fillText('週末例假日', rx, ly);
+                rx -= 18;
+                if (weekendPattern) {
+                    ctx.fillStyle = weekendPattern;
+                    ctx.fillRect(rx, ly - 6, 13, 13);
+                }
+                ctx.strokeStyle = '#cbd5e1';
+                ctx.strokeRect(rx, ly - 6, 13, 13);
+                rx -= 18;
+
+                const w2 = ctx.measureText('超期警示區段').width;
+                rx -= w2;
+                ctx.fillStyle = '#e11d48';
+                ctx.fillText('超期警示區段', rx, ly);
+                rx -= 18;
+                if (overduePattern) {
+                    ctx.fillStyle = overduePattern;
+                    ctx.fillRect(rx, ly - 6, 14, 12);
+                }
+                rx -= 18;
+
+                const w1 = ctx.measureText('契約竣工線 (右側終點)').width;
+                rx -= w1;
+                ctx.fillStyle = '#be123c';
+                ctx.fillText('契約竣工線 (右側終點)', rx, ly);
+                rx -= 8;
+                ctx.fillStyle = '#e11d48';
+                ctx.fillRect(rx, ly - 7, 3, 14);
+            }
+
+            return canvas;
+        }
+
+        function exportChart(format) {
+            const isJpg = format === 'jpeg' || format === 'jpg';
+            const mimeType = isJpg ? 'image/jpeg' : 'image/png';
+            const ext = isJpg ? 'jpg' : 'png';
+            const btn = document.getElementById(isJpg ? 'exportJpgBtn' : 'exportPngBtn');
+            const origHtml = btn ? btn.innerHTML : '';
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i><span>匯出中...</span>`;
+            }
+            showToast(`正在產生高解析度 ${ext.toUpperCase()} 圖檔...`, 'info');
+
+            setTimeout(() => {
+                try {
+                    const canvas = renderGanttToCanvas();
+                    const safeName = (state.projectName || '專案甘特圖').replace(/[\\/:*?"<>|]/g, '_').trim();
+                    const fileName = `${safeName}_時程甘特圖_${getTodayStr()}.${ext}`;
+
+                    const triggerDownloadFromUrl = (url, shouldRevoke) => {
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = fileName;
+                        link.style.display = 'none';
+                        document.body.appendChild(link);
+                        link.click();
+                        setTimeout(() => {
+                            document.body.removeChild(link);
+                            if (shouldRevoke) URL.revokeObjectURL(url);
+                        }, 1500);
+                    };
+
+                    if (canvas.toBlob) {
+                        canvas.toBlob((blob) => {
+                            if (blob) {
+                                const url = URL.createObjectURL(blob);
+                                triggerDownloadFromUrl(url, true);
+                                showToast(`已成功匯出 ${ext.toUpperCase()} 圖檔（${fileName}）`);
+                            } else {
+                                const dataUrl = canvas.toDataURL(mimeType, 0.95);
+                                triggerDownloadFromUrl(dataUrl, false);
+                                showToast(`已成功匯出 ${ext.toUpperCase()} 圖檔`);
+                            }
+                            if (btn) {
+                                btn.disabled = false;
+                                btn.innerHTML = origHtml;
+                            }
+                        }, mimeType, 0.95);
+                    } else {
+                        const dataUrl = canvas.toDataURL(mimeType, 0.95);
+                        triggerDownloadFromUrl(dataUrl, false);
+                        showToast(`已成功匯出 ${ext.toUpperCase()} 圖檔`);
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.innerHTML = origHtml;
+                        }
+                    }
+                } catch (err) {
+                    console.error('匯出甘特圖失敗:', err);
+                    showToast(`匯出失敗：${err.message || '發生未知錯誤'}`, 'warning');
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = origHtml;
+                    }
+                }
+            }, 60);
+        }
+
+        // ==========================================
+        // 14. 提示訊息與初始化
+        // ==========================================
+        let toastTimer = null;
+        function showToast(msg, type = 'success') {
+            const toast = document.getElementById('toastNotification');
+            const icon = document.getElementById('toastIcon');
+            const text = document.getElementById('toastMessage');
+
+            text.textContent = msg;
+            if (type === 'warning') {
+                icon.className = 'fa-solid fa-triangle-exclamation text-amber-400 text-base';
+            } else if (type === 'info') {
+                icon.className = 'fa-solid fa-spinner fa-spin text-blue-400 text-base';
+            } else {
+                icon.className = 'fa-solid fa-circle-check text-emerald-400 text-base';
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        window.onload = function () {
+            const hasSaved = loadFromStorage();
+            if (hasSaved) {
+                if (!FONT_SIZE_CONFIG[state.fontSize]) state.fontSize = 16;
+                document.getElementById('projectName').value = state.projectName;
+                document.getElementById('awardDate').value = state.awardDate || getTodayStr();
+                document.getElementById('contractDuration').value = state.contractDuration || 120;
+                updateDayModeButtons();
+                updateTimeScaleButtons();
+                updateFontSizeButtons();
+                renderAll();
+            } else {
+                state.awardDate = getTodayStr();
+                document.getElementById('awardDate').value = state.awardDate;
+                updateDayModeButtons();
+                updateTimeScaleButtons();
+                updateFontSizeButtons();
+                loadTemplatePreset('medium', true);
+            }
+        };
+    </script>
+</body>
+</html>
