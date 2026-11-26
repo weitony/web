@@ -1,0 +1,2982 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>專案時程甘特圖 產生器 [By Wei.Tony]</title>
+  <style>
+    :root {
+      --app-font-size: 16px;
+      --font-scale: 1;
+      --row-height: 44px;
+      --header-top-h: 28px;
+      --header-bot-h: 28px;
+      --header-total-h: 56px;
+      --bar-height: 26px;
+      --bg-slate: #f8fafc;
+      --border-color: #cbd5e1;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif;
+      background-color: var(--bg-slate);
+      color: var(--text-main);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* 頂部導覽列 */
+    .top-navbar {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+      color: #ffffff;
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
+      z-index: 20;
+    }
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .brand-badge {
+      font-size: 12px;
+      background: rgba(59, 130, 246, 0.3);
+      border: 1px solid rgba(147, 197, 253, 0.4);
+      color: #dbeafe;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 500;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .nav-divider {
+      width: 1px;
+      height: 22px;
+      background: rgba(255, 255, 255, 0.22);
+      margin: 0 2px;
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 6px 11px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+
+    .btn-select {
+      background: #1e293b;
+      color: #f8fafc;
+      border-color: #475569;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+
+    .btn-secondary { background: rgba(255, 255, 255, 0.12); color: #fff; border-color: rgba(255, 255, 255, 0.25); }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.22); }
+
+    .btn-emerald { background: #059669; color: #fff; }
+    .btn-emerald:hover { background: #047857; }
+
+    .btn-indigo { background: #4f46e5; color: #fff; }
+    .btn-indigo:hover { background: #4338ca; }
+
+    .btn-amber { background: #d97706; color: #fff; }
+    .btn-amber:hover { background: #b45309; }
+
+    .btn-cyan { background: #0284c7; color: #fff; }
+    .btn-cyan:hover { background: #0369a1; }
+
+    /* 契約參數與檢視控制列 */
+    .control-panel {
+      background: #ffffff;
+      border-bottom: 1px solid var(--border-color);
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      z-index: 15;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .field-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .field-item input[type="text"],
+    .field-item input[type="date"],
+    .field-item input[type="number"] {
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text-main);
+      background: #f8fafc;
+    }
+
+    .field-item input:focus {
+      outline: 2px solid #3b82f6;
+      background: #fff;
+    }
+
+    /* 分段按鈕組（時間刻度 & 字體大小） */
+    .segmented-control {
+      display: inline-flex;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .seg-btn {
+      border: none;
+      background: transparent;
+      color: #475569;
+      padding: 4px 10px;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 5px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+
+    .seg-btn:hover {
+      color: #0f172a;
+      background: #e2e8f0;
+    }
+
+    .seg-btn.active {
+      background: #2563eb;
+      color: #ffffff;
+      box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
+    }
+
+    /* 狀態統計徽章 */
+    .summary-badges {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .info-pill {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    .status-pill {
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .status-ok {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #86efac;
+    }
+
+    .status-overdue {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fca5a5;
+    }
+
+    /* 提示與階段分類調色盤列 */
+    .legend-bar {
+      background: #eff6ff;
+      border-bottom: 1px solid #bfdbfe;
+      padding: 7px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 13px;
+      color: #1e3a8a;
+    }
+
+    .legend-items {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+
+    .phase-picker-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      color: #1e293b;
+      cursor: pointer;
+      background: #ffffff;
+      padding: 3px 9px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+
+    .phase-picker-label input[type="color"] {
+      width: 20px;
+      height: 20px;
+      border: none;
+      padding: 0;
+      background: none;
+      cursor: pointer;
+    }
+
+    .btn-reset-color {
+      background: #ffffff;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+      padding: 3px 9px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-reset-color:hover {
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+
+    /* 主雙欄工作區 */
+    .workspace {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+      background: #fff;
+    }
+
+    /* 左側 WBS 編輯表格區 */
+    .wbs-pane {
+      width: 48%;
+      min-width: 340px;
+      max-width: 75%;
+      border-right: 3px solid #94a3b8;
+      overflow: auto;
+      background: #ffffff;
+      flex-shrink: 0;
+    }
+
+    /* 可拖曳分隔條 */
+    .pane-resizer {
+      width: 6px;
+      background: #cbd5e1;
+      cursor: col-resize;
+      flex-shrink: 0;
+      transition: background 0.15s;
+      z-index: 10;
+    }
+
+    .pane-resizer:hover,
+    .pane-resizer.dragging {
+      background: #2563eb;
+    }
+
+    table.wbs-table {
+      width: max-content;
+      min-width: 100%;
+      border-collapse: collapse;
+      font-size: var(--app-font-size);
+      table-layout: fixed;
+    }
+
+    table.wbs-table thead th {
+      position: sticky;
+      top: 0;
+      height: var(--header-total-h);
+      background: #f1f5f9;
+      color: #334155;
+      font-weight: 700;
+      border-bottom: 2px solid #94a3b8;
+      border-right: 1px solid #e2e8f0;
+      padding: 0 6px;
+      text-align: center;
+      z-index: 8;
+      white-space: nowrap;
+      font-size: calc(var(--app-font-size) * 0.9);
+    }
+
+    table.wbs-table tbody tr {
+      min-height: var(--row-height);
+      border-bottom: 1px solid #e2e8f0;
+      transition: background 0.1s;
+    }
+
+    table.wbs-table tbody tr:hover {
+      background: #f8fafc;
+    }
+
+    table.wbs-table td {
+      min-height: var(--row-height);
+      border-right: 1px solid #f1f5f9;
+      padding: 4px 5px;
+      vertical-align: middle;
+      text-align: center;
+      font-size: var(--app-font-size);
+      overflow: hidden;
+    }
+
+    .cell-input {
+      width: 100%;
+      height: calc(var(--row-height) - 8px);
+      border: 1px solid transparent;
+      background: transparent;
+      font-size: var(--app-font-size);
+      font-family: inherit;
+      color: var(--text-main);
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+
+    /* 多列自動增高之工項名稱輸入框 */
+    .cell-textarea {
+      height: auto;
+      min-height: calc(var(--row-height) - 10px);
+      resize: none;
+      overflow: hidden;
+      line-height: 1.38;
+      padding: 5px 6px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      text-align: left;
+      display: block;
+    }
+
+    .cell-input:hover {
+      border-color: #cbd5e1;
+      background: #ffffff;
+    }
+
+    .cell-input:focus {
+      outline: none;
+      border-color: #2563eb;
+      background: #ffffff;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+    }
+
+    .cell-center {
+      text-align: center;
+    }
+
+    .phase-select {
+      width: 100%;
+      height: calc(var(--row-height) - 10px);
+      border-radius: 6px;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      font-size: calc(var(--app-font-size) * 0.88);
+      font-weight: 700;
+      font-family: inherit;
+      padding: 0 4px;
+      cursor: pointer;
+    }
+
+    .date-readonly {
+      font-family: Consolas, Monaco, monospace;
+      font-size: calc(var(--app-font-size) * 0.88);
+      color: #334155;
+      white-space: nowrap;
+    }
+
+    .date-overdue {
+      color: #dc2626;
+      font-weight: 700;
+    }
+
+    .row-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .icon-btn {
+      width: calc(var(--app-font-size) * 1.5);
+      height: calc(var(--app-font-size) * 1.5);
+      border-radius: 4px;
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      cursor: pointer;
+      font-size: calc(var(--app-font-size) * 0.9);
+      font-weight: 700;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .icon-btn.add:hover { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+    .icon-btn.del:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+
+    /* 右側互動式甘特圖區 */
+    .gantt-pane {
+      flex: 1;
+      overflow: auto;
+      position: relative;
+      background: #ffffff;
+      user-select: none;
+    }
+
+    .gantt-canvas-wrapper {
+      position: relative;
+      width: max-content;
+    }
+
+    .gantt-header {
+      position: sticky;
+      top: 0;
+      z-index: 9;
+      background: #f8fafc;
+      border-bottom: 2px solid #94a3b8;
+    }
+
+    .gantt-header-top,
+    .gantt-header-bottom {
+      display: flex;
+    }
+
+    .gantt-header-top {
+      height: var(--header-top-h);
+      border-bottom: 1px solid #cbd5e1;
+      background: #e2e8f0;
+    }
+
+    .gantt-header-bottom {
+      height: var(--header-bot-h);
+      background: #f8fafc;
+    }
+
+    .time-cell-top {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: #1e293b;
+      border-right: 1px solid #cbd5e1;
+      font-size: calc(var(--app-font-size) * 0.85);
+      overflow: hidden;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .time-cell-bot {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #475569;
+      border-right: 1px solid #e2e8f0;
+      font-size: calc(var(--app-font-size) * 0.78);
+      font-weight: 600;
+      overflow: hidden;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .time-cell-bot.weekend {
+      background: #fff1f2;
+      color: #e11d48;
+    }
+
+    .gantt-body {
+      position: relative;
+    }
+
+    .gantt-grid-row {
+      border-bottom: 1px solid #e2e8f0;
+      position: absolute;
+      left: 0;
+    }
+
+    .gantt-weekend-col {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      background: rgba(254, 226, 226, 0.32);
+      pointer-events: none;
+    }
+
+    .gantt-v-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      border-right: 1px solid #f1f5f9;
+      pointer-events: none;
+    }
+
+    /* 開工綠線與契約竣工紅線 */
+    .marker-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 0;
+      z-index: 6;
+      pointer-events: none;
+    }
+
+    .marker-start {
+      border-left: 2px dashed #16a34a;
+    }
+
+    .marker-deadline {
+      border-left: 3px dashed #dc2626;
+    }
+
+    .marker-tag {
+      position: sticky;
+      top: calc(var(--header-total-h) + 4px);
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: calc(var(--app-font-size) * 0.75);
+      font-weight: 700;
+      white-space: nowrap;
+      color: #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    }
+
+    .marker-start .marker-tag {
+      background: #16a34a;
+      transform: translateX(4px);
+    }
+
+    .marker-deadline .marker-tag {
+      background: #dc2626;
+      transform: translateX(-100%) translateX(-4px);
+    }
+
+    /* 相依箭頭 SVG */
+    .dep-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    /* 任務橫條 */
+    .gantt-bar {
+      position: absolute;
+      height: var(--bar-height);
+      border-radius: 6px;
+      z-index: 5;
+      cursor: grab;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 2px 5px rgba(15, 23, 42, 0.18);
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      transition: filter 0.1s;
+    }
+
+    .gantt-bar:hover {
+      filter: brightness(1.07);
+    }
+
+    .gantt-bar.dragging {
+      cursor: grabbing;
+      opacity: 0.9;
+      box-shadow: 0 5px 14px rgba(15, 23, 42, 0.32);
+      z-index: 8;
+    }
+
+    .gantt-bar.overdue {
+      background: repeating-linear-gradient(
+        45deg,
+        #dc2626,
+        #dc2626 8px,
+        #b91c1c 8px,
+        #b91c1c 16px
+      ) !important;
+      border-color: #7f1d1d;
+    }
+
+    .bar-resize-handle {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 9px;
+      cursor: ew-resize;
+      background: rgba(255, 255, 255, 0.35);
+      border-top-right-radius: 5px;
+      border-bottom-right-radius: 5px;
+    }
+
+    .bar-resize-handle:hover {
+      background: rgba(255, 255, 255, 0.75);
+    }
+
+    .bar-label {
+      position: absolute;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: calc(var(--app-font-size) * 0.85);
+      font-weight: 700;
+      pointer-events: none;
+      line-height: 1.25;
+    }
+
+    /* 通用對話框 Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal-card {
+      background: #ffffff;
+      width: 740px;
+      max-width: 94vw;
+      max-height: 90vh;
+      overflow-y: auto;
+      border-radius: 12px;
+      padding: 20px 24px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+    }
+
+    .modal-card h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+      color: #0f172a;
+    }
+
+    .modal-card p {
+      font-size: 13px;
+      color: #475569;
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+
+    .modal-card textarea {
+      width: 100%;
+      height: 220px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 13px;
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    /* 匯出專案時程內容專用卡片網格 */
+    .export-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 640px) {
+      .export-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .export-option-card {
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 10px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .export-option-card:hover {
+      border-color: #3b82f6;
+      background: #eff6ff;
+    }
+
+    .export-option-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    .export-option-desc {
+      font-size: 12px;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    .preview-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .preview-header-row span {
+      font-size: 13px;
+      font-weight: 700;
+      color: #334155;
+    }
+
+    .toast-notice {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #0f172a;
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(10px);
+      transition: all 0.25s ease;
+      z-index: 100;
+    }
+
+    .toast-notice.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 頂部導覽與匯出列 -->
+  <header class="top-navbar">
+    <div class="brand-title">
+      <span>📊 專案時程甘特圖 產生器 [By Wei.Tony]</span>
+      <span class="brand-badge">PM Master Schedule</span>
+    </div>
+    <div class="nav-actions">
+      <select id="templateSelect" class="btn-select" title="選擇工程專案範本">
+        <option value="days90">📂 範本：園區網路與弱電系統建置工程（90日曆天）</option>
+        <option value="days120" selected>📂 範本：科技安全監控與中控系統建置工程（120日曆天）</option>
+        <option value="days150">📂 範本：資料中心與智慧機房建置工程（150日曆天）</option>
+      </select>
+      <input type="file" id="projectFileInput" accept=".json" style="display:none;" onchange="handleProjectFileUpload(event)" />
+      <button class="btn btn-secondary" onclick="document.getElementById('projectFileInput').click()" title="讀取先前匯出的 .json 專案時程檔">📂 載入專案檔</button>
+      <button class="btn btn-secondary" onclick="openBatchModal()">📝 批次匯入 WBS</button>
+      <button class="btn btn-primary" onclick="addNewTask()">＋ 新增工項</button>
+      <div class="nav-divider"></div>
+      <button class="btn btn-amber" onclick="openExportContentModal()" title="匯出完整專案設定檔(.json)、Excel報表(.xls)、CSV、Markdown或複製文字">📤 匯出專案時程內容</button>
+      <button class="btn btn-emerald" onclick="exportGanttImage('png')">🖼️ 匯出 PNG</button>
+      <button class="btn btn-indigo" onclick="exportGanttImage('jpeg')">📸 匯出 JPG</button>
+    </div>
+  </header>
+
+  <!-- 專案契約設定、時間軸檢視與字體大小控制列 -->
+  <section class="control-panel">
+    <div class="control-group">
+      <label class="field-item">
+        專案名稱：
+        <input type="text" id="projectName" value="科技安全監控與中控系統建置工程" style="width: 220px;" oninput="renderAll()" />
+      </label>
+      <label class="field-item">
+        決標日期：
+        <input type="date" id="awardDate" value="2025-05-01" onchange="recalcAndRender()" />
+      </label>
+      <label class="field-item" title="例如 0 代表決標當日開工，7 代表決標後第 7 日開工起算">
+        開工偏移(天)：
+        <input type="number" id="startOffset" value="7" min="0" max="90" style="width: 58px;" onchange="recalcAndRender()" />
+      </label>
+      <label class="field-item">
+        契約總工期(日曆天)：
+        <input type="number" id="contractDays" value="120" min="10" max="1500" style="width: 72px;" onchange="recalcAndRender()" />
+      </label>
+
+      <!-- 時間軸檢視：日 / 週 / 月 -->
+      <div class="field-item">
+        <span>時間軸：</span>
+        <div class="segmented-control" id="viewModeGroup">
+          <button type="button" class="seg-btn" data-mode="day" onclick="setViewMode('day')">日</button>
+          <button type="button" class="seg-btn active" data-mode="week" onclick="setViewMode('week')">週</button>
+          <button type="button" class="seg-btn" data-mode="month" onclick="setViewMode('month')">月</button>
+        </div>
+      </div>
+
+      <!-- 時間軸橫向縮放 -->
+      <label class="field-item">
+        寬度縮放：
+        <input type="range" id="zoomRange" min="6" max="44" value="14" style="width: 85px;" oninput="onZoomChange(this.value)" />
+      </label>
+
+      <!-- 字體大小選擇：16px、20px、26px -->
+      <div class="field-item">
+        <span>字體大小：</span>
+        <div class="segmented-control" id="fontSizeGroup">
+          <button type="button" class="seg-btn active" data-size="16" onclick="setFontSize(16)">16px</button>
+          <button type="button" class="seg-btn" data-size="20" onclick="setFontSize(20)">20px</button>
+          <button type="button" class="seg-btn" data-size="26" onclick="setFontSize(26)">26px</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="summary-badges">
+      <span class="info-pill" id="startInfoPill">開工日：-</span>
+      <span class="info-pill" id="deadlineInfoPill">契約竣工日：-</span>
+      <span class="status-pill status-ok" id="scheduleStatusPill">計算中...</span>
+    </div>
+  </section>
+
+  <!-- 階段分類自訂顏色與操作提示列 -->
+  <section class="legend-bar">
+    <div>
+      💡 <strong>互動操作提示：</strong>工項名稱支援<strong>自動多列換行（匯出圖片與報表完整呈現）</strong>，亦可按 <code>Shift+Enter</code> 手動換行；點擊右上角「<strong>📤 匯出專案時程內容</strong>」可儲存專案檔或匯出 Excel / CSV / 文字報告。
+    </div>
+    <div class="legend-items" id="phaseColorPickers"></div>
+  </section>
+
+  <!-- 左右雙欄核心工作區 -->
+  <main class="workspace" id="workspace">
+    <!-- 左側 WBS 結構表 -->
+    <div class="wbs-pane" id="wbsPane">
+      <table class="wbs-table" id="wbsTable">
+        <thead>
+          <tr id="wbsTheadRow">
+            <th id="th-id">ID</th>
+            <th id="th-wbs">WBS</th>
+            <th id="th-name">工作項目名稱</th>
+            <th id="th-phase">階段分類</th>
+            <th id="th-dur">工期(天)</th>
+            <th id="th-pred" title="可填單一編號或多筆以逗號分隔，如 4,5">前置ID</th>
+            <th id="th-lag" title="延遲天數，輸入負數代表提前平行重疊施作">Lag</th>
+            <th id="th-start">開始日期</th>
+            <th id="th-end">完成日期</th>
+            <th id="th-act">操作</th>
+          </tr>
+        </thead>
+        <tbody id="wbsTbody"></tbody>
+      </table>
+    </div>
+
+    <!-- 中間可拉動寬度分隔線 -->
+    <div class="pane-resizer" id="paneResizer" title="左右拖曳調整表格與甘特圖寬度比例"></div>
+
+    <!-- 右側甘特圖區（右側精準鎖定至契約竣工紅線） -->
+    <div class="gantt-pane" id="ganttPane">
+      <div class="gantt-canvas-wrapper" id="ganttWrapper">
+        <div class="gantt-header" id="ganttHeader">
+          <div class="gantt-header-top" id="ganttHeaderTop"></div>
+          <div class="gantt-header-bottom" id="ganttHeaderBottom"></div>
+        </div>
+        <div class="gantt-body" id="ganttBody"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 批次文字匯入 Modal -->
+  <div class="modal-backdrop" id="batchModal">
+    <div class="modal-card">
+      <h3>📝 批次文字匯入 WBS 工作分解結構</h3>
+      <p>
+        請每行輸入一筆工項，欄位以半形逗號 <code>,</code> 分隔：<br />
+        格式：<code>WBS代碼, 工項名稱, 階段分類, 工期天數, 前置ID(多個請用;分隔), 延遲Lag天數</code><br />
+        階段分類可填：<strong>前置與文件審查</strong>、<strong>採購與備料</strong>、<strong>施工與系統建置</strong>、<strong>測試與驗收結案</strong>
+      </p>
+      <textarea id="batchTextarea"></textarea>
+      <div class="modal-footer">
+        <button class="btn" style="background:#e2e8f0;color:#334155;" onclick="closeBatchModal()">取消</button>
+        <button class="btn btn-primary" onclick="applyBatchImport()">確認匯入並排程</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 匯出目前專案時程內容 Modal -->
+  <div class="modal-backdrop" id="exportContentModal">
+    <div class="modal-card">
+      <h3>📤 匯出目前專案時程內容</h3>
+      <p>
+        您可以選擇匯出完整專案設定檔（供日後載入繼續編輯），或輸出成 Excel 帶格式時程表、CSV 明細與服務建議書可用的 Markdown 文字報告：
+      </p>
+
+      <div class="export-grid">
+        <div class="export-option-card">
+          <div>
+            <div class="export-option-title">💾 1. 專案完整存檔（.json）</div>
+            <div class="export-option-desc">完整保存決標日、工期、自訂階段顏色、檢視設定與所有 WBS 排程，日後點選頂部「📂 載入專案檔」即可 100% 還原。</div>
+          </div>
+          <div>
+            <button class="btn btn-primary" onclick="exportProjectJSON()">下載 JSON 專案存檔</button>
+          </div>
+        </div>
+
+        <div class="export-option-card">
+          <div>
+            <div class="export-option-title">📊 2. Excel 專案時程表（.xls）</div>
+            <div class="export-option-desc">包含頂部專案契約摘要、階段自訂配色底色、儲存格內多列完整工項名稱與逾期紅字標示，可直接以 Excel 開啟編輯。</div>
+          </div>
+          <div>
+            <button class="btn btn-emerald" onclick="exportExcelSchedule()">下載 Excel 時程表 (.xls)</button>
+          </div>
+        </div>
+
+        <div class="export-option-card">
+          <div>
+            <div class="export-option-title">📥 3. CSV 時程明細表（.csv）</div>
+            <div class="export-option-desc">UTF-8 BOM 編碼（Excel 不亂碼），內含契約決標／竣工資訊摘要列與完整 WBS 欄位明細。</div>
+          </div>
+          <div>
+            <button class="btn btn-amber" onclick="exportCSV()">下載 CSV 明細檔 (.csv)</button>
+          </div>
+        </div>
+
+        <div class="export-option-card">
+          <div>
+            <div class="export-option-title">📄 4. 服務建議書時程報告（.md）</div>
+            <div class="export-option-desc">自動彙整專案契約時間框、各階段工項統計與完整 WBS 時程 Markdown 表格，適合直接貼入計畫書與簡報。</div>
+          </div>
+          <div>
+            <button class="btn btn-indigo" onclick="exportMarkdownReport()">下載 Markdown 報告 (.md)</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="preview-header-row">
+        <span>📋 目前專案時程文字摘要預覽（可直接複製貼上）：</span>
+        <button class="btn btn-cyan" onclick="copyScheduleSummaryText()">📋 一鍵複製時程內容</button>
+      </div>
+      <textarea id="exportPreviewTextarea" readonly style="height: 175px; background: #f8fafc;"></textarea>
+
+      <div class="modal-footer">
+        <button class="btn" style="background:#e2e8f0;color:#334155;" onclick="closeExportContentModal()">關閉視窗</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右下角操作提示 Toast -->
+  <div class="toast-notice" id="toastNotice">已成功匯出！</div>
+
+  <script>
+    // =========================================================
+    // 1. 常數、階段顏色設定與工程範本資料（90天 / 120天 / 150天）
+    // =========================================================
+    const DEFAULT_PHASE_COLORS = {
+      "前置與文件審查": "#2563eb",
+      "採購與備料": "#d97706",
+      "施工與系統建置": "#0d9488",
+      "測試與驗收結案": "#7c3aed"
+    };
+
+    let phaseColors = { ...DEFAULT_PHASE_COLORS };
+    const PHASE_LIST = Object.keys(DEFAULT_PHASE_COLORS);
+
+    let viewMode = "week";       // 'day' | 'week' | 'month'
+    let pxPerDay = 14;           // 每日像素寬度
+    let currentFontSize = 16;    // 16 | 20 | 26
+    let tasks = [];
+
+    const TEMPLATES = {
+      days90: {
+        projectName: "園區網路與弱電系統建置工程",
+        awardDate: "2025-05-01",
+        startOffset: 5,
+        contractDays: 90,
+        tasks: [
+          { id: 1, wbs: "1.1", name: "專案啟動會議與現場管線勘查", phase: "前置與文件審查", duration: 6, preds: "", lag: 0, manualStart: "" },
+          { id: 2, wbs: "1.2", name: "工作計畫書、施工圖說與型錄送審", phase: "前置與文件審查", duration: 10, preds: "1", lag: 0, manualStart: "" },
+          { id: 3, wbs: "2.1", name: "核心交換器、防火牆與無線AP採購備料", phase: "採購與備料", duration: 24, preds: "2", lag: -3, manualStart: "" },
+          { id: 4, wbs: "2.2", name: "Cat.6A網路線、光纖與機櫃五金進場", phase: "採購與備料", duration: 14, preds: "2", lag: 0, manualStart: "" },
+          { id: 5, wbs: "3.1", name: "弱電管槽架設與骨幹光纖佈放熔接", phase: "施工與系統建置", duration: 20, preds: "2", lag: 0, manualStart: "" },
+          { id: 6, wbs: "3.2", name: "樓層資訊點水平佈線與面板模組端接", phase: "施工與系統建置", duration: 18, preds: "4,5", lag: -8, manualStart: "" },
+          { id: 7, wbs: "3.3", name: "機櫃定位、核心網路設備與AP安裝上架", phase: "施工與系統建置", duration: 14, preds: "3,6", lag: -4, manualStart: "" },
+          { id: 8, wbs: "3.4", name: "VLAN網段規劃、資安政策與網管系統設定", phase: "施工與系統建置", duration: 10, preds: "7", lag: -2, manualStart: "" },
+          { id: 9, wbs: "4.1", name: "Fluke纜線認證測試與全網壓力聯測", phase: "測試與驗收結案", duration: 8, preds: "8", lag: 0, manualStart: "" },
+          { id: 10, wbs: "4.2", name: "教育訓練、竣工圖書提送與正式驗收結案", phase: "測試與驗收結案", duration: 9, preds: "9", lag: 0, manualStart: "" }
+        ]
+      },
+      days120: {
+        projectName: "科技安全監控與中控系統建置工程",
+        awardDate: "2025-05-01",
+        startOffset: 7,
+        contractDays: 120,
+        tasks: [
+          { id: 1, wbs: "1.1", name: "專案啟動會議與現勘套繪", phase: "前置與文件審查", duration: 7, preds: "", lag: 0, manualStart: "" },
+          { id: 2, wbs: "1.2", name: "整體施工計畫書與材料型錄送審", phase: "前置與文件審查", duration: 14, preds: "1", lag: 0, manualStart: "" },
+          { id: 3, wbs: "2.1", name: "核心交換器、NVR儲存與伺服器採購備料", phase: "採購與備料", duration: 35, preds: "2", lag: -5, manualStart: "" },
+          { id: 4, wbs: "2.2", name: "AI攝影機、門禁設備與光纖線材備料進場", phase: "採購與備料", duration: 21, preds: "2", lag: 0, manualStart: "" },
+          { id: 5, wbs: "3.1", name: "廠區EMT/PVC管槽架設與手孔清理", phase: "施工與系統建置", duration: 25, preds: "2", lag: 0, manualStart: "" },
+          { id: 6, wbs: "3.2", name: "骨幹光纖與網路電力線纜佈放熔接", phase: "施工與系統建置", duration: 22, preds: "5", lag: -10, manualStart: "" },
+          { id: 7, wbs: "3.3", name: "前端AI攝影機與門禁控制器立桿安裝", phase: "施工與系統建置", duration: 20, preds: "4,6", lag: -8, manualStart: "" },
+          { id: 8, wbs: "3.4", name: "中控室電視牆、機櫃上架與核心設備建置", phase: "施工與系統建置", duration: 15, preds: "3,6", lag: 0, manualStart: "" },
+          { id: 9, wbs: "3.5", name: "VMS管理平台軟體整合與AI告警調校", phase: "施工與系統建置", duration: 14, preds: "7,8", lag: -4, manualStart: "" },
+          { id: 10, wbs: "4.1", name: "單機自主檢查與全系統整合聯測(SIT)", phase: "測試與驗收結案", duration: 10, preds: "9", lag: 0, manualStart: "" },
+          { id: 11, wbs: "4.2", name: "72小時全載連續穩定度燒機測試", phase: "測試與驗收結案", duration: 5, preds: "10", lag: 0, manualStart: "" },
+          { id: 12, wbs: "4.3", name: "操作教育訓練、竣工圖說提送與正式驗收", phase: "測試與驗收結案", duration: 12, preds: "11", lag: 0, manualStart: "" }
+        ]
+      },
+      days150: {
+        projectName: "資料中心與智慧機房建置工程",
+        awardDate: "2025-06-01",
+        startOffset: 7,
+        contractDays: 150,
+        tasks: [
+          { id: 1, wbs: "1.1", name: "機房現況測繪、電力負載計算與細部設計", phase: "前置與文件審查", duration: 12, preds: "", lag: 0, manualStart: "" },
+          { id: 2, wbs: "1.2", name: "施工計畫書、BIM管線套繪與設備送審核定", phase: "前置與文件審查", duration: 16, preds: "1", lag: 0, manualStart: "" },
+          { id: 3, wbs: "2.1", name: "模組化UPS不斷電與精密空調主機採購備料", phase: "採購與備料", duration: 50, preds: "2", lag: -6, manualStart: "" },
+          { id: 4, wbs: "2.2", name: "冷熱通道封閉機櫃、匯流排與消防鋼瓶備料", phase: "採購與備料", duration: 32, preds: "2", lag: 0, manualStart: "" },
+          { id: 5, wbs: "3.1", name: "機房隔間防火裝修、防水工程與高架地板施作", phase: "施工與系統建置", duration: 24, preds: "2", lag: 0, manualStart: "" },
+          { id: 6, wbs: "3.2", name: "雙迴路市電配電盤、接地銅排與電力線槽工程", phase: "施工與系統建置", duration: 22, preds: "5", lag: -8, manualStart: "" },
+          { id: 7, wbs: "3.3", name: "氣體自動滅火管路與極早期偵煙系統建置", phase: "施工與系統建置", duration: 16, preds: "5", lag: -4, manualStart: "" },
+          { id: 8, wbs: "3.4", name: "精密空調、UPS定位配電與冷熱通道機櫃安裝", phase: "施工與系統建置", duration: 20, preds: "3,4,6", lag: 0, manualStart: "" },
+          { id: 9, wbs: "3.5", name: "結構化光纖銅纜佈線與DCIM環控系統建置", phase: "施工與系統建置", duration: 18, preds: "8", lag: -6, manualStart: "" },
+          { id: 10, wbs: "4.1", name: "假負載滿載放電測試、空調熱平衡與消防聯動測試", phase: "測試與驗收結案", duration: 12, preds: "7,9", lag: 0, manualStart: "" },
+          { id: 11, wbs: "4.2", name: "初驗缺失改善與系統試運轉觀察期", phase: "測試與驗收結案", duration: 10, preds: "10", lag: 0, manualStart: "" },
+          { id: 12, wbs: "4.3", name: "維運移交教育訓練、竣工書圖驗收結案", phase: "測試與驗收結案", duration: 10, preds: "11", lag: 0, manualStart: "" }
+        ]
+      }
+    };
+
+    // =========================================================
+    // 2. 日期、提示訊息與 Canvas 多列文字斷行工具函式
+    // =========================================================
+    let toastTimer = null;
+    function showToast(msg) {
+      const el = document.getElementById("toastNotice");
+      el.textContent = msg;
+      el.classList.add("show");
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function parseDate(str) {
+      const [y, m, d] = str.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    }
+
+    function formatDate(date) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+
+    function addDays(date, days) {
+      const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      d.setDate(d.getDate() + days);
+      return d;
+    }
+
+    function diffDays(d1, d2) {
+      const utc1 = Date.UTC(d1.getFullYear(), d1.getMonth(), d1.getDate());
+      const utc2 = Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
+      return Math.round((utc2 - utc1) / 86400000);
+    }
+
+    function hexToRgba(hex, alpha) {
+      const clean = hex.replace("#", "");
+      const r = parseInt(clean.substring(0, 2), 16);
+      const g = parseInt(clean.substring(2, 4), 16);
+      const b = parseInt(clean.substring(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function lightenHex(hex, ratio = 0.85) {
+      const clean = hex.replace("#", "");
+      const r = parseInt(clean.substring(0, 2), 16);
+      const g = parseInt(clean.substring(2, 4), 16);
+      const b = parseInt(clean.substring(4, 6), 16);
+      const nr = Math.round(r + (255 - r) * ratio);
+      const ng = Math.round(g + (255 - g) * ratio);
+      const nb = Math.round(b + (255 - b) * ratio);
+      return `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
+    }
+
+    /**
+     * 將任意長度文字（含手動換行 \n）依指定像素寬度自動斷行，不遺漏任何字元且不壓縮字體
+     */
+    function wrapCanvasText(ctx, text, maxWidth) {
+      const rawText = String(text ?? "");
+      if (!rawText) return [""];
+      const safeMaxW = Math.max(24, maxWidth);
+      const paragraphs = rawText.split(/\r?\n/);
+      const lines = [];
+
+      paragraphs.forEach((para) => {
+        if (!para) {
+          lines.push("");
+          return;
+        }
+        let currentLine = "";
+        for (const ch of Array.from(para)) {
+          const testLine = currentLine + ch;
+          if (ctx.measureText(testLine).width > safeMaxW && currentLine.length > 0) {
+            lines.push(currentLine);
+            currentLine = ch;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        if (currentLine.length > 0) {
+          lines.push(currentLine);
+        }
+      });
+
+      return lines.length > 0 ? lines : [""];
+    }
+
+    // =========================================================
+    // 3. 字體大小切換（16px / 20px / 26px）與欄位動態縮放
+    // =========================================================
+    function setFontSize(size) {
+      currentFontSize = [16, 20, 26].includes(Number(size)) ? Number(size) : 16;
+      const scale = currentFontSize / 16;
+      const rowH = Math.round(currentFontSize * 2.75);
+      const topH = Math.round(currentFontSize * 1.75);
+      const botH = Math.round(currentFontSize * 1.75);
+      const totalH = topH + botH;
+      const barH = Math.round(rowH * 0.58);
+
+      const root = document.documentElement;
+      root.style.setProperty("--app-font-size", `${currentFontSize}px`);
+      root.style.setProperty("--font-scale", String(scale));
+      root.style.setProperty("--row-height", `${rowH}px`);
+      root.style.setProperty("--header-top-h", `${topH}px`);
+      root.style.setProperty("--header-bot-h", `${botH}px`);
+      root.style.setProperty("--header-total-h", `${totalH}px`);
+      root.style.setProperty("--bar-height", `${barH}px`);
+
+      // 動態設定左側 WBS 表格各欄位寬度
+      const colWidths = {
+        "th-id": Math.round(42 * scale),
+        "th-wbs": Math.round(64 * scale),
+        "th-name": Math.round(250 * scale),
+        "th-phase": Math.round(152 * scale),
+        "th-dur": Math.round(76 * scale),
+        "th-pred": Math.round(78 * scale),
+        "th-lag": Math.round(64 * scale),
+        "th-start": Math.round(112 * scale),
+        "th-end": Math.round(112 * scale),
+        "th-act": Math.round(68 * scale)
+      };
+
+      Object.entries(colWidths).forEach(([id, w]) => {
+        const el = document.getElementById(id);
+        if (el) el.style.width = `${w}px`;
+      });
+
+      document.querySelectorAll("#fontSizeGroup .seg-btn").forEach((btn) => {
+        btn.classList.toggle("active", Number(btn.dataset.size) === currentFontSize);
+      });
+
+      renderAll();
+    }
+
+    // =========================================================
+    // 4. 時間軸模式切換（日 / 週 / 月）與縮放
+    // =========================================================
+    function setViewMode(mode, customPxPerDay = null) {
+      viewMode = ["day", "week", "month"].includes(mode) ? mode : "week";
+      document.querySelectorAll("#viewModeGroup .seg-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.mode === viewMode);
+      });
+
+      const zoomInput = document.getElementById("zoomRange");
+      if (customPxPerDay !== null) {
+        pxPerDay = Number(customPxPerDay);
+      } else if (viewMode === "day") {
+        pxPerDay = 28;
+      } else if (viewMode === "week") {
+        pxPerDay = 14;
+      } else {
+        pxPerDay = 8;
+      }
+      zoomInput.value = pxPerDay;
+      renderGantt();
+    }
+
+    function onZoomChange(val) {
+      pxPerDay = Number(val);
+      renderGantt();
+    }
+
+    // =========================================================
+    // 5. 階段分類顏色選擇器渲染
+    // =========================================================
+    function renderPhaseColorPickers() {
+      const container = document.getElementById("phaseColorPickers");
+      container.innerHTML = "";
+
+      PHASE_LIST.forEach((phase) => {
+        const label = document.createElement("label");
+        label.className = "phase-picker-label";
+        label.title = `點擊修改「${phase}」階段代表色`;
+
+        const input = document.createElement("input");
+        input.type = "color";
+        input.value = phaseColors[phase];
+        input.addEventListener("input", (e) => {
+          phaseColors[phase] = e.target.value;
+          renderAll();
+        });
+
+        const span = document.createElement("span");
+        span.textContent = phase;
+
+        label.appendChild(input);
+        label.appendChild(span);
+        container.appendChild(label);
+      });
+
+      const resetBtn = document.createElement("button");
+      resetBtn.type = "button";
+      resetBtn.className = "btn-reset-color";
+      resetBtn.textContent = "↺ 重設顏色";
+      resetBtn.onclick = () => {
+        phaseColors = { ...DEFAULT_PHASE_COLORS };
+        renderPhaseColorPickers();
+        renderAll();
+      };
+      container.appendChild(resetBtn);
+    }
+
+    // =========================================================
+    // 6. 核心排程引擎（決標日 + 偏移 + FS 前置邏輯 + Lag 順推）
+    // =========================================================
+    function getProjectDates() {
+      const awardStr = document.getElementById("awardDate").value || "2025-05-01";
+      const offset = parseInt(document.getElementById("startOffset").value || "0", 10);
+      const contractDays = Math.max(1, parseInt(document.getElementById("contractDays").value || "120", 10));
+
+      const awardDate = parseDate(awardStr);
+      const projectStart = addDays(awardDate, offset);
+      const deadlineDate = addDays(projectStart, contractDays - 1);
+
+      let maxEnd = projectStart;
+      if (tasks.length > 0 && tasks[0].endDate) {
+        maxEnd = tasks[0].endDate;
+        tasks.forEach((t) => {
+          if (t.endDate && t.endDate > maxEnd) maxEnd = t.endDate;
+        });
+      }
+      const bufferDays = diffDays(maxEnd, deadlineDate);
+
+      return { awardStr, offset, awardDate, projectStart, deadlineDate, contractDays, maxEnd, bufferDays };
+    }
+
+    function recalculateSchedule() {
+      const awardStr = document.getElementById("awardDate").value || "2025-05-01";
+      const offset = parseInt(document.getElementById("startOffset").value || "0", 10);
+      const projectStart = addDays(parseDate(awardStr), offset);
+
+      const taskMap = new Map();
+      tasks.forEach((t) => taskMap.set(t.id, t));
+
+      for (let pass = 0; pass < Math.max(2, tasks.length); pass++) {
+        tasks.forEach((t) => {
+          const dur = Math.max(1, parseInt(t.duration || 1, 10));
+          t.duration = dur;
+          const lag = parseInt(t.lag || 0, 10);
+          t.lag = isNaN(lag) ? 0 : lag;
+
+          const predIds = String(t.preds || "")
+            .split(/[,;，；\s]+/)
+            .map((s) => parseInt(s.trim(), 10))
+            .filter((n) => !isNaN(n) && n !== t.id && taskMap.has(n));
+
+          if (predIds.length > 0) {
+            let maxPredEnd = null;
+            predIds.forEach((pid) => {
+              const pt = taskMap.get(pid);
+              if (pt && pt.endDate) {
+                if (!maxPredEnd || pt.endDate > maxPredEnd) {
+                  maxPredEnd = pt.endDate;
+                }
+              }
+            });
+            if (maxPredEnd) {
+              t.startDate = addDays(maxPredEnd, 1 + t.lag);
+            } else {
+              t.startDate = addDays(projectStart, t.lag);
+            }
+          } else if (t.manualStart) {
+            t.startDate = parseDate(t.manualStart);
+          } else {
+            t.startDate = addDays(projectStart, t.lag);
+          }
+
+          t.endDate = addDays(t.startDate, dur - 1);
+        });
+      }
+    }
+
+    function recalcAndRender() {
+      recalculateSchedule();
+      renderAll();
+    }
+
+    // =========================================================
+    // 7. 渲染頂部狀態統計與左側 WBS 編輯表（支援多列自動增高同步）
+    // =========================================================
+    function updateSummaryBadges() {
+      const { projectStart, deadlineDate, maxEnd, bufferDays } = getProjectDates();
+      document.getElementById("startInfoPill").textContent = `🟢 開工起算：${formatDate(projectStart)}`;
+      document.getElementById("deadlineInfoPill").textContent = `🔴 契約竣工：${formatDate(deadlineDate)}`;
+
+      const statusEl = document.getElementById("scheduleStatusPill");
+      if (tasks.length === 0) {
+        statusEl.className = "status-pill status-ok";
+        statusEl.textContent = "尚無工項";
+        return;
+      }
+
+      if (bufferDays >= 0) {
+        statusEl.className = "status-pill status-ok";
+        statusEl.textContent = `✅ 預計完工 ${formatDate(maxEnd)}（預留緩衝 ${bufferDays} 天）`;
+      } else {
+        statusEl.className = "status-pill status-overdue";
+        statusEl.textContent = `⚠️ 預計完工 ${formatDate(maxEnd)}（超出契約工期 ${Math.abs(bufferDays)} 天！）`;
+      }
+    }
+
+    /**
+     * 動態計算每列 WBS 工項名稱的多列高度，並記錄於 task._uiRowH 供右側甘特圖精準對齊
+     */
+    function autoFitRowHeights() {
+      const baseRowH = Math.round(currentFontSize * 2.75);
+      const minInputH = Math.round(currentFontSize * 1.95);
+      const tbody = document.getElementById("wbsTbody");
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+
+      rows.forEach((tr, idx) => {
+        const ta = tr.querySelector(".cell-textarea");
+        let rowH = baseRowH;
+        if (ta) {
+          ta.style.height = "auto";
+          const neededTaH = Math.max(minInputH, ta.scrollHeight);
+          ta.style.height = `${neededTaH}px`;
+          rowH = Math.max(baseRowH, neededTaH + 10);
+        }
+        tr.style.height = `${rowH}px`;
+        if (tasks[idx]) {
+          tasks[idx]._uiRowH = rowH;
+        }
+      });
+    }
+
+    function renderWBSTable() {
+      const tbody = document.getElementById("wbsTbody");
+      const { deadlineDate } = getProjectDates();
+      tbody.innerHTML = "";
+
+      tasks.forEach((t, idx) => {
+        const tr = document.createElement("tr");
+        const isOverdue = t.endDate > deadlineDate;
+        const pColor = phaseColors[t.phase] || "#2563eb";
+
+        // 1. ID
+        const tdId = document.createElement("td");
+        tdId.style.fontWeight = "700";
+        tdId.style.color = "#64748b";
+        tdId.textContent = t.id;
+        tr.appendChild(tdId);
+
+        // 2. WBS
+        const tdWbs = document.createElement("td");
+        const inpWbs = document.createElement("input");
+        inpWbs.className = "cell-input cell-center";
+        inpWbs.value = t.wbs;
+        inpWbs.onchange = (e) => { t.wbs = e.target.value; renderGantt(); };
+        tdWbs.appendChild(inpWbs);
+        tr.appendChild(tdWbs);
+
+        // 3. 工項名稱（多列自動換行 textarea，匯出與畫面同步完整顯示）
+        const tdName = document.createElement("td");
+        const inpName = document.createElement("textarea");
+        inpName.rows = 1;
+        inpName.className = "cell-input cell-textarea";
+        inpName.value = t.name;
+        inpName.title = "支援自動多列換行；按 Shift + Enter 可手動換行";
+        inpName.oninput = (e) => {
+          t.name = e.target.value;
+          autoFitRowHeights();
+          renderGantt();
+        };
+        inpName.onchange = (e) => {
+          t.name = e.target.value;
+          autoFitRowHeights();
+          renderGantt();
+        };
+        inpName.onkeydown = (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            inpName.blur();
+          }
+        };
+        tdName.appendChild(inpName);
+        tr.appendChild(tdName);
+
+        // 4. 階段分類下拉
+        const tdPhase = document.createElement("td");
+        const selPhase = document.createElement("select");
+        selPhase.className = "phase-select";
+        selPhase.style.backgroundColor = hexToRgba(pColor, 0.14);
+        selPhase.style.color = pColor;
+        selPhase.style.borderColor = hexToRgba(pColor, 0.45);
+        PHASE_LIST.forEach((ph) => {
+          const opt = document.createElement("option");
+          opt.value = ph;
+          opt.textContent = ph;
+          if (ph === t.phase) opt.selected = true;
+          selPhase.appendChild(opt);
+        });
+        selPhase.onchange = (e) => {
+          t.phase = e.target.value;
+          renderAll();
+        };
+        tdPhase.appendChild(selPhase);
+        tr.appendChild(tdPhase);
+
+        // 5. 工期
+        const tdDur = document.createElement("td");
+        const inpDur = document.createElement("input");
+        inpDur.type = "number";
+        inpDur.min = "1";
+        inpDur.className = "cell-input cell-center";
+        inpDur.value = t.duration;
+        inpDur.onchange = (e) => {
+          t.duration = Math.max(1, parseInt(e.target.value || "1", 10));
+          recalcAndRender();
+        };
+        tdDur.appendChild(inpDur);
+        tr.appendChild(tdDur);
+
+        // 6. 前置 ID
+        const tdPred = document.createElement("td");
+        const inpPred = document.createElement("input");
+        inpPred.className = "cell-input cell-center";
+        inpPred.placeholder = "-";
+        inpPred.value = t.preds;
+        inpPred.onchange = (e) => {
+          t.preds = e.target.value.trim();
+          if (t.preds) t.manualStart = "";
+          recalcAndRender();
+        };
+        tdPred.appendChild(inpPred);
+        tr.appendChild(tdPred);
+
+        // 7. Lag
+        const tdLag = document.createElement("td");
+        const inpLag = document.createElement("input");
+        inpLag.type = "number";
+        inpLag.className = "cell-input cell-center";
+        inpLag.value = t.lag;
+        inpLag.onchange = (e) => {
+          t.lag = parseInt(e.target.value || "0", 10);
+          recalcAndRender();
+        };
+        tdLag.appendChild(inpLag);
+        tr.appendChild(tdLag);
+
+        // 8. 開始日（支援手動變更）
+        const tdStart = document.createElement("td");
+        const inpStart = document.createElement("input");
+        inpStart.type = "date";
+        inpStart.className = "cell-input cell-center date-readonly";
+        inpStart.value = formatDate(t.startDate);
+        inpStart.onchange = (e) => {
+          if (!e.target.value) return;
+          const newStart = parseDate(e.target.value);
+          const delta = diffDays(t.startDate, newStart);
+          if (String(t.preds || "").trim() !== "") {
+            t.lag = (t.lag || 0) + delta;
+          } else {
+            t.manualStart = e.target.value;
+            t.lag = 0;
+          }
+          recalcAndRender();
+        };
+        tdStart.appendChild(inpStart);
+        tr.appendChild(tdStart);
+
+        // 9. 完成日
+        const tdEnd = document.createElement("td");
+        tdEnd.className = "date-readonly" + (isOverdue ? " date-overdue" : "");
+        tdEnd.textContent = formatDate(t.endDate);
+        tr.appendChild(tdEnd);
+
+        // 10. 操作（插入 / 刪除）
+        const tdAct = document.createElement("td");
+        const actWrap = document.createElement("div");
+        actWrap.className = "row-actions";
+
+        const btnIns = document.createElement("button");
+        btnIns.className = "icon-btn add";
+        btnIns.title = "在下方插入新工項";
+        btnIns.textContent = "+";
+        btnIns.onclick = () => insertTaskAt(idx + 1);
+
+        const btnDel = document.createElement("button");
+        btnDel.className = "icon-btn del";
+        btnDel.title = "刪除此工項";
+        btnDel.textContent = "×";
+        btnDel.onclick = () => deleteTask(t.id);
+
+        actWrap.appendChild(btnIns);
+        actWrap.appendChild(btnDel);
+        tdAct.appendChild(actWrap);
+        tr.appendChild(tdAct);
+
+        tbody.appendChild(tr);
+      });
+
+      autoFitRowHeights();
+    }
+
+    // =========================================================
+    // 8. 時間軸區間計算（右側嚴格鎖定至契約竣工紅線）
+    // =========================================================
+    function getTimelineBounds() {
+      const { awardDate, projectStart, deadlineDate, contractDays } = getProjectDates();
+      let minStart = awardDate < projectStart ? awardDate : projectStart;
+      tasks.forEach((t) => {
+        if (t.startDate && t.startDate < minStart) minStart = t.startDate;
+      });
+      const timelineStart = addDays(minStart, -2);
+      const timelineEnd = new Date(deadlineDate.getFullYear(), deadlineDate.getMonth(), deadlineDate.getDate());
+      const totalDays = Math.max(1, diffDays(timelineStart, timelineEnd) + 1);
+
+      return { timelineStart, timelineEnd, totalDays, projectStart, deadlineDate, contractDays };
+    }
+
+    function buildTimelineSegments(timelineStart, totalDays) {
+      const topSegments = [];
+      const botSegments = [];
+
+      if (viewMode === "day") {
+        let curMonthKey = "";
+        let monthSpan = 0;
+        for (let i = 0; i < totalDays; i++) {
+          const d = addDays(timelineStart, i);
+          const mKey = `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, "0")}月`;
+          if (mKey !== curMonthKey) {
+            if (monthSpan > 0) topSegments.push({ label: curMonthKey, days: monthSpan });
+            curMonthKey = mKey;
+            monthSpan = 1;
+          } else {
+            monthSpan++;
+          }
+          const dow = d.getDay();
+          botSegments.push({
+            label: String(d.getDate()),
+            days: 1,
+            isWeekend: dow === 0 || dow === 6
+          });
+        }
+        if (monthSpan > 0) topSegments.push({ label: curMonthKey, days: monthSpan });
+      } else if (viewMode === "week") {
+        let curMonthKey = "";
+        let monthSpan = 0;
+        for (let i = 0; i < totalDays; i++) {
+          const d = addDays(timelineStart, i);
+          const mKey = `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, "0")}月`;
+          if (mKey !== curMonthKey) {
+            if (monthSpan > 0) topSegments.push({ label: curMonthKey, days: monthSpan });
+            curMonthKey = mKey;
+            monthSpan = 1;
+          } else {
+            monthSpan++;
+          }
+        }
+        if (monthSpan > 0) topSegments.push({ label: curMonthKey, days: monthSpan });
+
+        let weekIdx = 1;
+        for (let i = 0; i < totalDays; i += 7) {
+          const span = Math.min(7, totalDays - i);
+          const d = addDays(timelineStart, i);
+          const lbl = span >= 4 ? `W${weekIdx} (${d.getMonth() + 1}/${d.getDate()})` : `W${weekIdx}`;
+          botSegments.push({ label: lbl, days: span, isWeekend: false });
+          weekIdx++;
+        }
+      } else {
+        let curYearKey = "";
+        let yearSpan = 0;
+        let curMonthLabel = "";
+        let curMonthDays = 0;
+
+        for (let i = 0; i < totalDays; i++) {
+          const d = addDays(timelineStart, i);
+          const yKey = `${d.getFullYear()}年`;
+          if (yKey !== curYearKey) {
+            if (yearSpan > 0) topSegments.push({ label: curYearKey, days: yearSpan });
+            curYearKey = yKey;
+            yearSpan = 1;
+          } else {
+            yearSpan++;
+          }
+
+          const mLbl = `${d.getFullYear()}-${d.getMonth() + 1}`;
+          if (mLbl !== curMonthLabel) {
+            if (curMonthDays > 0) {
+              const prevMonthNum = curMonthLabel.split("-")[1];
+              botSegments.push({ label: `${prevMonthNum}月`, days: curMonthDays, isWeekend: false });
+            }
+            curMonthLabel = mLbl;
+            curMonthDays = 1;
+          } else {
+            curMonthDays++;
+          }
+        }
+        if (yearSpan > 0) topSegments.push({ label: curYearKey, days: yearSpan });
+        if (curMonthDays > 0) {
+          const prevMonthNum = curMonthLabel.split("-")[1];
+          botSegments.push({ label: `${prevMonthNum}月`, days: curMonthDays, isWeekend: false });
+        }
+      }
+
+      return { topSegments, botSegments };
+    }
+
+    // =========================================================
+    // 9. 渲染右側互動式甘特圖（動態列高同步、拖曳伸縮與邊界避讓）
+    // =========================================================
+    function getEffectivePxPerDay() {
+      const scale = currentFontSize / 16;
+      if (viewMode === "day") {
+        return Math.max(pxPerDay, Math.round(24 * scale));
+      } else if (viewMode === "week") {
+        return Math.max(pxPerDay, Math.round(13 * scale));
+      } else {
+        return Math.max(pxPerDay, Math.round(6 * scale));
+      }
+    }
+
+    function renderGantt() {
+      const { timelineStart, totalDays, projectStart, deadlineDate } = getTimelineBounds();
+      const dayWidth = getEffectivePxPerDay();
+      const totalWidth = totalDays * dayWidth;
+
+      const baseRowH = Math.round(currentFontSize * 2.75);
+      const barH = Math.round(baseRowH * 0.58);
+
+      const rowTops = [];
+      const rowHeights = [];
+      let sumRowH = 0;
+      tasks.forEach((t) => {
+        const rh = t._uiRowH || baseRowH;
+        rowTops.push(sumRowH);
+        rowHeights.push(rh);
+        sumRowH += rh;
+      });
+      const totalBodyH = Math.max(sumRowH, 240);
+
+      const wrapper = document.getElementById("ganttWrapper");
+      const headerTop = document.getElementById("ganttHeaderTop");
+      const headerBot = document.getElementById("ganttHeaderBottom");
+      const body = document.getElementById("ganttBody");
+
+      wrapper.style.width = `${totalWidth}px`;
+      headerTop.innerHTML = "";
+      headerBot.innerHTML = "";
+      body.innerHTML = "";
+      body.style.height = `${totalBodyH}px`;
+
+      const { topSegments, botSegments } = buildTimelineSegments(timelineStart, totalDays);
+
+      topSegments.forEach((seg) => {
+        const div = document.createElement("div");
+        div.className = "time-cell-top";
+        div.style.width = `${seg.days * dayWidth}px`;
+        div.textContent = seg.label;
+        headerTop.appendChild(div);
+      });
+
+      let accDays = 0;
+      botSegments.forEach((seg) => {
+        const w = seg.days * dayWidth;
+        const div = document.createElement("div");
+        div.className = "time-cell-bot" + (seg.isWeekend ? " weekend" : "");
+        div.style.width = `${w}px`;
+        div.textContent = seg.label;
+        headerBot.appendChild(div);
+
+        if (seg.isWeekend && viewMode === "day") {
+          const wk = document.createElement("div");
+          wk.className = "gantt-weekend-col";
+          wk.style.left = `${accDays * dayWidth}px`;
+          wk.style.width = `${w}px`;
+          body.appendChild(wk);
+        }
+        const vline = document.createElement("div");
+        vline.className = "gantt-v-line";
+        vline.style.left = `${(accDays + seg.days) * dayWidth}px`;
+        body.appendChild(vline);
+
+        accDays += seg.days;
+      });
+
+      tasks.forEach((_, idx) => {
+        const rowDiv = document.createElement("div");
+        rowDiv.className = "gantt-grid-row";
+        rowDiv.style.width = `${totalWidth}px`;
+        rowDiv.style.top = `${rowTops[idx]}px`;
+        rowDiv.style.height = `${rowHeights[idx]}px`;
+        body.appendChild(rowDiv);
+      });
+
+      const startX = diffDays(timelineStart, projectStart) * dayWidth;
+      if (startX >= 0 && startX <= totalWidth) {
+        const startLine = document.createElement("div");
+        startLine.className = "marker-line marker-start";
+        startLine.style.left = `${startX}px`;
+        startLine.innerHTML = `<span class="marker-tag">開工 ${formatDate(projectStart)}</span>`;
+        body.appendChild(startLine);
+      }
+
+      const deadlineLine = document.createElement("div");
+      deadlineLine.className = "marker-line marker-deadline";
+      deadlineLine.style.left = `${totalWidth - 2}px`;
+      deadlineLine.innerHTML = `<span class="marker-tag">契約竣工線 ${formatDate(deadlineDate)}</span>`;
+      body.appendChild(deadlineLine);
+
+      const barCoords = new Map();
+      tasks.forEach((t, idx) => {
+        const rawStartDay = diffDays(timelineStart, t.startDate);
+        const rawEndDay = diffDays(timelineStart, t.endDate) + 1;
+        const clampedStartX = Math.max(0, Math.min(totalWidth - 6, rawStartDay * dayWidth));
+        const clampedEndX = Math.max(clampedStartX + 8, Math.min(totalWidth, rawEndDay * dayWidth));
+        const barW = clampedEndX - clampedStartX;
+        const ry = rowTops[idx];
+        const rh = rowHeights[idx];
+        const centerY = ry + rh / 2;
+
+        barCoords.set(t.id, { x1: clampedStartX, x2: clampedEndX, w: barW, cy: centerY, ry, rh, idx });
+      });
+
+      const svgNS = "http://www.w3.org/2000/svg";
+      const svg = document.createElementNS(svgNS, "svg");
+      svg.setAttribute("class", "dep-svg");
+      svg.setAttribute("width", totalWidth);
+      svg.setAttribute("height", totalBodyH);
+
+      const defs = document.createElementNS(svgNS, "defs");
+      const marker = document.createElementNS(svgNS, "marker");
+      marker.setAttribute("id", "arrowHead");
+      marker.setAttribute("viewBox", "0 0 10 10");
+      marker.setAttribute("refX", "8");
+      marker.setAttribute("refY", "5");
+      marker.setAttribute("markerWidth", "6");
+      marker.setAttribute("markerHeight", "6");
+      marker.setAttribute("orient", "auto-start-reverse");
+      const arrowPath = document.createElementNS(svgNS, "path");
+      arrowPath.setAttribute("d", "M 0 1 L 10 5 L 0 9 z");
+      arrowPath.setAttribute("fill", "#64748b");
+      marker.appendChild(arrowPath);
+      defs.appendChild(marker);
+      svg.appendChild(defs);
+
+      tasks.forEach((t) => {
+        const targetCoord = barCoords.get(t.id);
+        if (!targetCoord) return;
+        const predIds = String(t.preds || "")
+          .split(/[,;，；\s]+/)
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => !isNaN(n) && barCoords.has(n));
+
+        predIds.forEach((pid) => {
+          const src = barCoords.get(pid);
+          const x1 = Math.min(totalWidth - 3, src.x2);
+          const y1 = src.cy;
+          const x2 = targetCoord.x1;
+          const y2 = targetCoord.cy;
+          const detourY = y2 >= y1 ? (src.ry + src.rh - 4) : (src.ry + 4);
+
+          let dStr = "";
+          if (x2 >= x1 + 12) {
+            const midX = x1 + 8;
+            dStr = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
+          } else {
+            const outX = Math.min(totalWidth - 3, x1 + 8);
+            const inX = Math.max(2, x2 - 10);
+            dStr = `M ${x1} ${y1} L ${outX} ${y1} L ${outX} ${detourY} L ${inX} ${detourY} L ${inX} ${y2} L ${x2} ${y2}`;
+          }
+
+          const path = document.createElementNS(svgNS, "path");
+          path.setAttribute("d", dStr);
+          path.setAttribute("fill", "none");
+          path.setAttribute("stroke", "#64748b");
+          path.setAttribute("stroke-width", currentFontSize >= 26 ? "2.2" : "1.6");
+          path.setAttribute("marker-end", "url(#arrowHead)");
+          svg.appendChild(path);
+        });
+      });
+      body.appendChild(svg);
+
+      tasks.forEach((t) => {
+        const coord = barCoords.get(t.id);
+        const isOverdue = t.endDate > deadlineDate;
+        const overdueDays = isOverdue ? diffDays(deadlineDate, t.endDate) : 0;
+        const color = phaseColors[t.phase] || "#2563eb";
+        const barTop = coord.ry + Math.round((coord.rh - barH) / 2);
+
+        const bar = document.createElement("div");
+        bar.className = "gantt-bar" + (isOverdue ? " overdue" : "");
+        bar.style.left = `${coord.x1}px`;
+        bar.style.top = `${barTop}px`;
+        bar.style.width = `${coord.w}px`;
+        bar.style.backgroundColor = color;
+        bar.title = `[${t.wbs}] ${t.name}\n階段：${t.phase}\n期間：${formatDate(t.startDate)} ~ ${formatDate(t.endDate)} (${t.duration}天)` +
+          (isOverdue ? `\n⚠️ 超出契約竣工線 ${overdueDays} 天` : "");
+
+        const cleanInlineName = String(t.name || "").replace(/\r?\n/g, " ");
+        const labelText = isOverdue
+          ? `${t.wbs} ${cleanInlineName} (逾期${overdueDays}天)`
+          : `${t.wbs} ${cleanInlineName} (${t.duration}d)`;
+        const approxLabelWidth = labelText.length * (currentFontSize * 0.78) + 14;
+        const rightRoom = totalWidth - coord.x2 - 10;
+        const leftRoom = coord.x1 - 10;
+        const insideRoom = coord.w - 16;
+
+        const lbl = document.createElement("span");
+        lbl.className = "bar-label";
+        lbl.textContent = labelText;
+
+        if (rightRoom >= approxLabelWidth) {
+          lbl.style.left = `${coord.w + 8}px`;
+          lbl.style.whiteSpace = "nowrap";
+          lbl.style.color = isOverdue ? "#dc2626" : "#1e293b";
+        } else if (insideRoom >= approxLabelWidth) {
+          lbl.style.left = "8px";
+          lbl.style.whiteSpace = "nowrap";
+          lbl.style.color = "#ffffff";
+        } else if (leftRoom >= approxLabelWidth) {
+          lbl.style.right = `${coord.w + 8}px`;
+          lbl.style.whiteSpace = "nowrap";
+          lbl.style.color = isOverdue ? "#dc2626" : "#1e293b";
+        } else {
+          if (rightRoom >= leftRoom && rightRoom >= insideRoom) {
+            lbl.style.left = `${coord.w + 8}px`;
+            lbl.style.maxWidth = `${Math.max(80, rightRoom)}px`;
+            lbl.style.color = isOverdue ? "#dc2626" : "#1e293b";
+          } else if (leftRoom >= insideRoom) {
+            lbl.style.right = `${coord.w + 8}px`;
+            lbl.style.maxWidth = `${Math.max(80, leftRoom)}px`;
+            lbl.style.textAlign = "right";
+            lbl.style.color = isOverdue ? "#dc2626" : "#1e293b";
+          } else {
+            lbl.style.left = "8px";
+            lbl.style.maxWidth = `${Math.max(60, insideRoom)}px`;
+            lbl.style.color = "#ffffff";
+          }
+        }
+        bar.appendChild(lbl);
+
+        const resizeHandle = document.createElement("div");
+        resizeHandle.className = "bar-resize-handle";
+        resizeHandle.title = "左右拖曳調整工期天數";
+        bar.appendChild(resizeHandle);
+
+        attachBarDragEvents(bar, resizeHandle, t, dayWidth);
+        body.appendChild(bar);
+      });
+    }
+
+    function attachBarDragEvents(barEl, handleEl, task, dayWidth) {
+      handleEl.addEventListener("mousedown", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const startMouseX = e.clientX;
+        const origDuration = task.duration;
+        barEl.classList.add("dragging");
+
+        function onMove(ev) {
+          const deltaDays = Math.round((ev.clientX - startMouseX) / dayWidth);
+          const nextDur = Math.max(1, origDuration + deltaDays);
+          if (nextDur !== task.duration) {
+            task.duration = nextDur;
+            recalculateSchedule();
+            updateSummaryBadges();
+            renderWBSTable();
+            renderGantt();
+          }
+        }
+
+        function onUp() {
+          barEl.classList.remove("dragging");
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        }
+
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      });
+
+      barEl.addEventListener("mousedown", (e) => {
+        if (e.target === handleEl) return;
+        e.preventDefault();
+        const startMouseX = e.clientX;
+        const origStart = new Date(task.startDate);
+        const origLag = task.lag || 0;
+        const hasPreds = String(task.preds || "").trim() !== "";
+        barEl.classList.add("dragging");
+
+        function onMove(ev) {
+          const deltaDays = Math.round((ev.clientX - startMouseX) / dayWidth);
+          if (hasPreds) {
+            const nextLag = origLag + deltaDays;
+            if (nextLag !== task.lag) {
+              task.lag = nextLag;
+              recalculateSchedule();
+              updateSummaryBadges();
+              renderWBSTable();
+              renderGantt();
+            }
+          } else {
+            const nextStartStr = formatDate(addDays(origStart, deltaDays));
+            if (nextStartStr !== formatDate(task.startDate)) {
+              task.manualStart = nextStartStr;
+              task.lag = 0;
+              recalculateSchedule();
+              updateSummaryBadges();
+              renderWBSTable();
+              renderGantt();
+            }
+          }
+        }
+
+        function onUp() {
+          barEl.classList.remove("dragging");
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        }
+
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      });
+    }
+
+    // =========================================================
+    // 10. 新增、插入、刪除與批次文字匯入工項
+    // =========================================================
+    function getNextTaskId() {
+      return tasks.reduce((max, t) => Math.max(max, t.id), 0) + 1;
+    }
+
+    function addNewTask() {
+      const nextId = getNextTaskId();
+      const prevId = tasks.length > 0 ? String(tasks[tasks.length - 1].id) : "";
+      tasks.push({
+        id: nextId,
+        wbs: `${tasks.length + 1}.0`,
+        name: "新工程施作項目",
+        phase: "施工與系統建置",
+        duration: 7,
+        preds: prevId,
+        lag: 0,
+        manualStart: ""
+      });
+      recalcAndRender();
+    }
+
+    function insertTaskAt(index) {
+      const nextId = getNextTaskId();
+      const prevId = index > 0 ? String(tasks[index - 1].id) : "";
+      tasks.splice(index, 0, {
+        id: nextId,
+        wbs: `${index + 1}.1`,
+        name: "新插入工作項目",
+        phase: "施工與系統建置",
+        duration: 5,
+        preds: prevId,
+        lag: 0,
+        manualStart: ""
+      });
+      recalcAndRender();
+    }
+
+    function deleteTask(id) {
+      if (tasks.length <= 1) {
+        alert("請至少保留一筆工作項目！");
+        return;
+      }
+      tasks = tasks.filter((t) => t.id !== id);
+      recalcAndRender();
+    }
+
+    function openBatchModal() {
+      const lines = tasks.map((t) => {
+        const predTxt = String(t.preds || "").replace(/,/g, ";");
+        const flatName = String(t.name || "").replace(/\r?\n/g, " ");
+        return `${t.wbs}, ${flatName}, ${t.phase}, ${t.duration}, ${predTxt}, ${t.lag || 0}`;
+      });
+      document.getElementById("batchTextarea").value = lines.join("\n");
+      document.getElementById("batchModal").classList.add("open");
+    }
+
+    function closeBatchModal() {
+      document.getElementById("batchModal").classList.remove("open");
+    }
+
+    function applyBatchImport() {
+      const raw = document.getElementById("batchTextarea").value.trim();
+      if (!raw) return;
+      const lines = raw.split(/\r?\n/).filter((l) => l.trim() !== "");
+      const imported = [];
+
+      lines.forEach((line, idx) => {
+        const parts = line.split(",").map((s) => s.trim());
+        const wbs = parts[0] || `${idx + 1}.0`;
+        const name = parts[1] || `工作項目 ${idx + 1}`;
+        const rawPhase = parts[2] || "施工與系統建置";
+        const phase = PHASE_LIST.includes(rawPhase) ? rawPhase : "施工與系統建置";
+        const duration = Math.max(1, parseInt(parts[3] || "5", 10));
+        const preds = (parts[4] || "").replace(/;/g, ",");
+        const lag = parseInt(parts[5] || "0", 10) || 0;
+
+        imported.push({
+          id: idx + 1,
+          wbs,
+          name,
+          phase,
+          duration,
+          preds,
+          lag,
+          manualStart: ""
+        });
+      });
+
+      if (imported.length > 0) {
+        tasks = imported;
+        closeBatchModal();
+        recalcAndRender();
+        showToast("已完成批次匯入 WBS 並重新計算排程！");
+      }
+    }
+
+    // =========================================================
+    // 11. 匯出／載入目前專案時程內容（JSON 存檔、Excel .xls、CSV、Markdown 與複製）
+    // =========================================================
+    function buildCurrentSchedulePayload() {
+      const projName = document.getElementById("projectName").value || "工程專案排程";
+      const { awardStr, offset, projectStart, deadlineDate, contractDays, maxEnd, bufferDays } = getProjectDates();
+
+      return {
+        schemaVersion: "1.0",
+        exportedAt: new Date().toISOString(),
+        project: {
+          projectName: projName,
+          awardDate: awardStr,
+          startOffset: offset,
+          contractDays,
+          projectStartDate: formatDate(projectStart),
+          contractDeadlineDate: formatDate(deadlineDate),
+          plannedFinishDate: formatDate(maxEnd),
+          bufferDays
+        },
+        uiSettings: {
+          viewMode,
+          pxPerDay,
+          fontSize: currentFontSize,
+          phaseColors: { ...phaseColors }
+        },
+        tasks: tasks.map((t) => ({
+          id: t.id,
+          wbs: t.wbs,
+          name: t.name,
+          phase: t.phase,
+          duration: t.duration,
+          preds: t.preds || "",
+          lag: t.lag || 0,
+          manualStart: t.manualStart || "",
+          startDate: formatDate(t.startDate),
+          endDate: formatDate(t.endDate),
+          isOverdue: t.endDate > deadlineDate
+        }))
+      };
+    }
+
+    function generateMarkdownReportText() {
+      const data = buildCurrentSchedulePayload();
+      const p = data.project;
+      const statusText = p.bufferDays >= 0
+        ? `符合契約工期（預計完工 ${p.plannedFinishDate}，預留緩衝 ${p.bufferDays} 日曆天）`
+        : `超出契約工期 ${Math.abs(p.bufferDays)} 日曆天（預計完工 ${p.plannedFinishDate}）`;
+
+      const lines = [];
+      lines.push(`# ${p.projectName} — 專案時程規劃表`);
+      lines.push("");
+      lines.push("## 一、專案契約時程基準");
+      lines.push(`- **決標日期**：${p.awardDate}`);
+      lines.push(`- **開工起算日**：${p.projectStartDate}（決標後偏移 ${p.startOffset} 天）`);
+      lines.push(`- **契約總工期**：${p.contractDays} 日曆天`);
+      lines.push(`- **契約竣工日**：${p.contractDeadlineDate}`);
+      lines.push(`- **排程檢核狀態**：${statusText}`);
+      lines.push("");
+      lines.push("## 二、WBS 工作分解結構與預計時程明細");
+      lines.push("");
+      lines.push("| ID | WBS | 工作項目名稱 | 階段分類 | 工期(天) | 前置ID | Lag(天) | 預計開始日 | 預計完成日 | 狀態 |");
+      lines.push("| :---: | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |");
+
+      data.tasks.forEach((t) => {
+        const safeName = String(t.name || "").replace(/\r?\n/g, "<br>").replace(/\|/g, "｜");
+        const safeWbs = String(t.wbs || "").replace(/\|/g, "｜");
+        const stateStr = t.isOverdue ? "⚠️ 逾竣工線" : "正常";
+        lines.push(
+          `| ${t.id} | ${safeWbs} | ${safeName} | ${t.phase} | ${t.duration} | ${t.preds || "-"} | ${t.lag} | ${t.startDate} | ${t.endDate} | ${stateStr} |`
+        );
+      });
+
+      return lines.join("\n");
+    }
+
+    function openExportContentModal() {
+      document.getElementById("exportPreviewTextarea").value = generateMarkdownReportText();
+      document.getElementById("exportContentModal").classList.add("open");
+    }
+
+    function closeExportContentModal() {
+      document.getElementById("exportContentModal").classList.remove("open");
+    }
+
+    function downloadBlobFile(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // 1. 匯出完整專案設定檔 (.json)
+    function exportProjectJSON() {
+      const payload = buildCurrentSchedulePayload();
+      const jsonStr = JSON.stringify(payload, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json;charset=utf-8;" });
+      downloadBlobFile(blob, `${payload.project.projectName}_專案時程檔.json`);
+      showToast("💾 已匯出 JSON 專案存檔！");
+    }
+
+    // 載入先前匯出的 .json 專案時程檔並完整還原
+    function handleProjectFileUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (!parsed || !Array.isArray(parsed.tasks) || parsed.tasks.length === 0) {
+            alert("檔案格式不符或無有效工項資料，請選擇由本系統匯出的 .json 專案時程檔！");
+            return;
+          }
+
+          if (parsed.project) {
+            if (parsed.project.projectName) document.getElementById("projectName").value = parsed.project.projectName;
+            if (parsed.project.awardDate) document.getElementById("awardDate").value = parsed.project.awardDate;
+            if (typeof parsed.project.startOffset === "number") document.getElementById("startOffset").value = parsed.project.startOffset;
+            if (typeof parsed.project.contractDays === "number") document.getElementById("contractDays").value = parsed.project.contractDays;
+          }
+
+          if (parsed.uiSettings) {
+            if (parsed.uiSettings.phaseColors) {
+              PHASE_LIST.forEach((ph) => {
+                if (parsed.uiSettings.phaseColors[ph]) {
+                  phaseColors[ph] = parsed.uiSettings.phaseColors[ph];
+                }
+              });
+              renderPhaseColorPickers();
+            }
+            if ([16, 20, 26].includes(Number(parsed.uiSettings.fontSize))) {
+              currentFontSize = Number(parsed.uiSettings.fontSize);
+            }
+            if (["day", "week", "month"].includes(parsed.uiSettings.viewMode)) {
+              viewMode = parsed.uiSettings.viewMode;
+            }
+            if (parsed.uiSettings.pxPerDay) {
+              pxPerDay = Number(parsed.uiSettings.pxPerDay);
+            }
+          }
+
+          tasks = parsed.tasks.map((t, idx) => ({
+            id: Number(t.id) || idx + 1,
+            wbs: String(t.wbs ?? `${idx + 1}.0`),
+            name: String(t.name ?? `工作項目 ${idx + 1}`),
+            phase: PHASE_LIST.includes(t.phase) ? t.phase : "施工與系統建置",
+            duration: Math.max(1, parseInt(t.duration || 1, 10)),
+            preds: String(t.preds ?? ""),
+            lag: parseInt(t.lag || 0, 10) || 0,
+            manualStart: String(t.manualStart ?? "")
+          }));
+
+          recalculateSchedule();
+          setViewMode(viewMode, pxPerDay);
+          setFontSize(currentFontSize);
+          showToast(`📂 已成功載入專案「${document.getElementById("projectName").value}」！`);
+        } catch (err) {
+          alert("讀取 JSON 專案檔失敗，請確認檔案內容是否完整！");
+        } finally {
+          event.target.value = "";
+        }
+      };
+      reader.readAsText(file, "utf-8");
+    }
+
+    // 2. 匯出 Excel 帶格式專案時程表 (.xls，支援儲存格內多列完整呈現與階段底色)
+    function exportExcelSchedule() {
+      const data = buildCurrentSchedulePayload();
+      const p = data.project;
+      const statusStr = p.bufferDays >= 0
+        ? `符合契約工期（預計完工 ${p.plannedFinishDate}，預留緩衝 ${p.bufferDays} 天）`
+        : `超出契約工期 ${Math.abs(p.bufferDays)} 天（預計完工 ${p.plannedFinishDate}）`;
+
+      let rowsHtml = "";
+      data.tasks.forEach((t) => {
+        const pCol = phaseColors[t.phase] || "#2563eb";
+        const lightBg = lightenHex(pCol, 0.86);
+        const multiLineExcelName = escapeHtml(t.name).replace(/\r?\n/g, '<br style="mso-data-placement:same-cell;" />');
+        const endStyle = t.isOverdue ? "color:#dc2626;font-weight:bold;" : "color:#0f172a;";
+        const stateText = t.isOverdue ? "逾契約竣工線" : "正常";
+
+        rowsHtml += `
+          <tr>
+            <td style="text-align:center;">${t.id}</td>
+            <td style="text-align:center;mso-number-format:'\\@';">${escapeHtml(t.wbs)}</td>
+            <td style="text-align:left;white-space:pre-wrap;">${multiLineExcelName}</td>
+            <td style="text-align:center;background:${lightBg};color:${pCol};font-weight:bold;">${escapeHtml(t.phase)}</td>
+            <td style="text-align:center;">${t.duration}</td>
+            <td style="text-align:center;mso-number-format:'\\@';">${escapeHtml(t.preds || "-")}</td>
+            <td style="text-align:center;">${t.lag}</td>
+            <td style="text-align:center;">${t.startDate}</td>
+            <td style="text-align:center;${endStyle}">${t.endDate}</td>
+            <td style="text-align:center;${endStyle}">${stateText}</td>
+          </tr>`;
+      });
+
+      const excelHtml = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="UTF-8" />
+          <style>
+            table { border-collapse: collapse; font-family: "Microsoft JhengHei", sans-serif; font-size: 11pt; }
+            td, th { border: 1px solid #94a3b8; padding: 6px 10px; vertical-align: middle; }
+            .title { background: #1e3a8a; color: #ffffff; font-size: 15pt; font-weight: bold; text-align: left; }
+            .meta-lbl { background: #eff6ff; color: #1e3a8a; font-weight: bold; text-align: center; }
+            .thead { background: #e2e8f0; color: #0f172a; font-weight: bold; text-align: center; }
+          </style>
+        </head>
+        <body>
+          <table>
+            <tr><td colspan="10" class="title">${escapeHtml(p.projectName)} — 專案時程規劃明細表</td></tr>
+            <tr>
+              <td class="meta-lbl">決標日期</td><td colspan="2">${p.awardDate}</td>
+              <td class="meta-lbl">開工起算日</td><td colspan="2">${p.projectStartDate}（偏移 ${p.startOffset} 天）</td>
+              <td class="meta-lbl">契約總工期</td><td colspan="3">${p.contractDays} 日曆天</td>
+            </tr>
+            <tr>
+              <td class="meta-lbl">契約竣工日</td><td colspan="2" style="color:#dc2626;font-weight:bold;">${p.contractDeadlineDate}</td>
+              <td class="meta-lbl">預計完工日</td><td colspan="2">${p.plannedFinishDate}</td>
+              <td class="meta-lbl">排程檢核</td><td colspan="3">${escapeHtml(statusStr)}</td>
+            </tr>
+            <tr><td colspan="10" style="border:none;height:8px;"></td></tr>
+            <tr class="thead">
+              <th style="width:50px;">ID</th>
+              <th style="width:75px;">WBS代碼</th>
+              <th style="width:320px;">工作項目名稱</th>
+              <th style="width:150px;">階段分類</th>
+              <th style="width:80px;">工期(天)</th>
+              <th style="width:85px;">前置ID</th>
+              <th style="width:75px;">Lag(天)</th>
+              <th style="width:115px;">預計開始日</th>
+              <th style="width:115px;">預計完成日</th>
+              <th style="width:105px;">檢核狀態</th>
+            </tr>
+            ${rowsHtml}
+          </table>
+        </body>
+        </html>`;
+
+      const blob = new Blob(["\uFEFF" + excelHtml], { type: "application/vnd.ms-excel;charset=utf-8;" });
+      downloadBlobFile(blob, `${p.projectName}_專案時程表.xls`);
+      showToast("📊 已匯出 Excel 專案時程表 (.xls)！");
+    }
+
+    // 3. 匯出含專案契約摘要與多列完整文字之 CSV 報表
+    function exportCSV() {
+      const data = buildCurrentSchedulePayload();
+      const p = data.project;
+      const metaRows = [
+        ["專案名稱", `"${p.projectName.replace(/"/g, '""')}"`, "決標日期", p.awardDate, "開工起算日", p.projectStartDate, "開工偏移(天)", p.startOffset],
+        ["契約總工期(日曆天)", p.contractDays, "契約竣工日", p.contractDeadlineDate, "預計完工日", p.plannedFinishDate, "緩衝天數", p.bufferDays],
+        []
+      ];
+
+      const headers = ["ID", "WBS代碼", "工作項目名稱", "階段分類", "工期(日曆天)", "前置任務ID", "延遲Lag(天)", "預計開始日", "預計完成日", "檢核狀態"];
+      const taskRows = data.tasks.map((t) => [
+        t.id,
+        `"${String(t.wbs || "").replace(/"/g, '""')}"`,
+        `"${String(t.name || "").replace(/"/g, '""')}"`,
+        `"${t.phase}"`,
+        t.duration,
+        `"${t.preds}"`,
+        t.lag,
+        t.startDate,
+        t.endDate,
+        t.isOverdue ? "逾契約竣工線" : "正常"
+      ]);
+
+      const csvContent = "\uFEFF" + [
+        ...metaRows.map((r) => r.join(",")),
+        headers.join(","),
+        ...taskRows.map((r) => r.join(","))
+      ].join("\r\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      downloadBlobFile(blob, `${p.projectName}_WBS時程明細.csv`);
+      showToast("📥 已匯出完整專案 CSV 時程明細！");
+    }
+
+    // 4. 匯出服務建議書可用之 Markdown 專案時程報告 (.md)
+    function exportMarkdownReport() {
+      const projName = document.getElementById("projectName").value || "工程專案排程";
+      const mdText = generateMarkdownReportText();
+      const blob = new Blob([mdText], { type: "text/markdown;charset=utf-8;" });
+      downloadBlobFile(blob, `${projName}_時程規劃報告.md`);
+      showToast("📄 已匯出 Markdown 時程規劃報告 (.md)！");
+    }
+
+    // 一鍵複製專案時程摘要文字至剪貼簿
+    function copyScheduleSummaryText() {
+      const txt = generateMarkdownReportText();
+      const previewEl = document.getElementById("exportPreviewTextarea");
+      previewEl.value = txt;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(() => {
+          showToast("📋 已複製專案時程內容至剪貼簿！");
+        }).catch(() => {
+          previewEl.select();
+          document.execCommand("copy");
+          showToast("📋 已複製專案時程內容至剪貼簿！");
+        });
+      } else {
+        previewEl.select();
+        document.execCommand("copy");
+        showToast("📋 已複製專案時程內容至剪貼簿！");
+      }
+    }
+
+    // =========================================================
+    // 12. 原生 HTML5 Canvas 2x 全景高解析度圖片匯出（PNG / JPG）
+    //     支援 WBS 工項名稱自動多列斷行與動態列高擴展，100% 完整呈現不裁切
+    // =========================================================
+    function exportGanttImage(format = "png") {
+      const projName = document.getElementById("projectName").value || "工程專案時程表";
+      const { timelineStart, totalDays, projectStart, deadlineDate, contractDays } = getTimelineBounds();
+      const scale = currentFontSize / 16;
+      const dpr = 2; // 2x Retina 高解析度
+
+      const fontFamily = '"Microsoft JhengHei", "PingFang TC", sans-serif';
+      const fs = currentFontSize;
+      const baseRowH = Math.round(fs * 2.75);
+      const nameLineH = Math.round(fs * 1.38);
+      const barLabelLineH = Math.round(fs * 1.2);
+      const cellPadX = Math.round(10 * scale);
+      const cellPadY = Math.round(10 * scale);
+
+      const topHeaderH = Math.round(fs * 1.75);
+      const botHeaderH = Math.round(fs * 1.75);
+      const tableHeaderH = topHeaderH + botHeaderH;
+      const baseBarH = Math.round(baseRowH * 0.58);
+
+      const cols = [
+        { key: "id", title: "ID", w: Math.round(46 * scale), align: "center", val: (t) => String(t.id) },
+        { key: "wbs", title: "WBS", w: Math.round(70 * scale), align: "center", val: (t) => t.wbs, isMultiline: true },
+        { key: "name", title: "工作項目名稱", w: Math.round(270 * scale), align: "left", val: (t) => t.name, isMultiline: true },
+        { key: "phase", title: "階段分類", w: Math.round(156 * scale), align: "center", val: (t) => t.phase, isPhase: true },
+        { key: "dur", title: "工期", w: Math.round(64 * scale), align: "center", val: (t) => `${t.duration}天` },
+        { key: "pred", title: "前置", w: Math.round(68 * scale), align: "center", val: (t) => t.preds || "-" },
+        { key: "start", title: "開始日", w: Math.round(110 * scale), align: "center", val: (t) => formatDate(t.startDate) },
+        { key: "end", title: "完成日", w: Math.round(110 * scale), align: "center", val: (t) => formatDate(t.endDate), isEnd: true }
+      ];
+
+      const tableW = cols.reduce((sum, c) => sum + c.w, 0);
+      const dayWidth = getEffectivePxPerDay();
+      const ganttW = totalDays * dayWidth;
+      const totalW = tableW + ganttW;
+
+      const mCanvas = document.createElement("canvas");
+      const mCtx = mCanvas.getContext("2d");
+
+      const modeName = viewMode === "day" ? "日檢視" : viewMode === "week" ? "週檢視" : "月檢視";
+      const metaText = `開工起算日：${formatDate(projectStart)}  ｜  契約竣工日：${formatDate(deadlineDate)}  ｜  契約總工期：${contractDays} 日曆天  ｜  刻度：${modeName}（字級 ${currentFontSize}px）`;
+
+      mCtx.font = `bold ${Math.round(22 * scale)}px ${fontFamily}`;
+      const titleTextW = mCtx.measureText(`📊 ${projName}`).width;
+      mCtx.font = `600 ${Math.round(14 * scale)}px ${fontFamily}`;
+      const metaTextW = mCtx.measureText(metaText).width;
+      mCtx.font = `bold ${Math.round(13 * scale)}px ${fontFamily}`;
+      let legendTotalW = 0;
+      PHASE_LIST.forEach((ph) => {
+        legendTotalW += mCtx.measureText(ph).width + Math.round(38 * scale);
+      });
+
+      const stackBannerLegend = (Math.max(titleTextW, metaTextW) + legendTotalW + Math.round(60 * scale)) > totalW;
+      const bannerH = stackBannerLegend ? Math.round(124 * scale) : Math.round(92 * scale);
+      const contentTop = bannerH;
+      const bodyTop = contentTop + tableHeaderH;
+
+      const wbsCol = cols.find((c) => c.key === "wbs");
+      const nameCol = cols.find((c) => c.key === "name");
+
+      const rowMetrics = [];
+      let runningBodyH = 0;
+
+      tasks.forEach((t, idx) => {
+        const isOverdue = t.endDate > deadlineDate;
+        const overdueDays = isOverdue ? diffDays(deadlineDate, t.endDate) : 0;
+
+        mCtx.font = `${fs}px ${fontFamily}`;
+        const wbsLines = wrapCanvasText(mCtx, t.wbs, wbsCol.w - Math.round(12 * scale));
+        const nameLines = wrapCanvasText(mCtx, t.name, nameCol.w - cellPadX * 2);
+        const maxLeftLines = Math.max(wbsLines.length, nameLines.length);
+        const leftNeededH = Math.max(baseRowH, maxLeftLines * nameLineH + cellPadY * 2);
+
+        const rawStart = diffDays(timelineStart, t.startDate);
+        const rawEnd = diffDays(timelineStart, t.endDate) + 1;
+        const x1 = tableW + Math.max(0, Math.min(ganttW - 6, rawStart * dayWidth));
+        const x2 = Math.min(totalW, tableW + Math.max(rawStart * dayWidth + 8, Math.min(ganttW, rawEnd * dayWidth)));
+        const bw = Math.max(8, x2 - x1);
+
+        const flatBarName = String(t.name || "").replace(/\r?\n/g, " ");
+        const barLblRaw = isOverdue
+          ? `${t.wbs} ${flatBarName} (逾期${overdueDays}天)`
+          : `${t.wbs} ${flatBarName} (${t.duration}d)`;
+
+        mCtx.font = `bold ${Math.round(fs * 0.84)}px ${fontFamily}`;
+        const barSingleW = mCtx.measureText(barLblRaw).width;
+        const padSide = Math.round(14 * scale);
+        const rightSpace = totalW - x2 - padSide;
+        const insideSpace = bw - padSide;
+        const leftSpace = x1 - tableW - padSide;
+
+        let barZone = "right";
+        let barLabelLines = [barLblRaw];
+
+        if (rightSpace >= barSingleW) {
+          barZone = "right";
+        } else if (insideSpace >= barSingleW) {
+          barZone = "inside";
+        } else if (leftSpace >= barSingleW) {
+          barZone = "left";
+        } else {
+          if (rightSpace >= leftSpace && rightSpace >= insideSpace) {
+            barZone = "right";
+            barLabelLines = wrapCanvasText(mCtx, barLblRaw, Math.max(Math.round(60 * scale), rightSpace));
+          } else if (leftSpace >= insideSpace) {
+            barZone = "left";
+            barLabelLines = wrapCanvasText(mCtx, barLblRaw, Math.max(Math.round(60 * scale), leftSpace));
+          } else {
+            barZone = "inside";
+            barLabelLines = wrapCanvasText(mCtx, barLblRaw, Math.max(Math.round(50 * scale), insideSpace));
+          }
+        }
+
+        const effectiveBarH = barZone === "inside" && barLabelLines.length > 1
+          ? Math.max(baseBarH, barLabelLines.length * barLabelLineH + Math.round(10 * scale))
+          : baseBarH;
+        const rightNeededH = Math.max(
+          baseRowH,
+          effectiveBarH + Math.round(12 * scale),
+          barLabelLines.length * barLabelLineH + Math.round(12 * scale)
+        );
+
+        const rowH = Math.max(leftNeededH, rightNeededH);
+        const ry = bodyTop + runningBodyH;
+        const cy = ry + rowH / 2;
+
+        rowMetrics.push({
+          t,
+          idx,
+          ry,
+          rowH,
+          cy,
+          wbsLines,
+          nameLines,
+          x1,
+          x2,
+          bw,
+          effectiveBarH,
+          barZone,
+          barLabelLines,
+          isOverdue,
+          overdueDays
+        });
+
+        runningBodyH += rowH;
+      });
+
+      const bodyHeight = runningBodyH;
+      const totalH = bodyTop + bodyHeight + Math.round(16 * scale);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = totalW * dpr;
+      canvas.height = totalH * dpr;
+      const ctx = canvas.getContext("2d");
+      ctx.scale(dpr, dpr);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, totalW, totalH);
+
+      const grad = ctx.createLinearGradient(0, 0, totalW, 0);
+      grad.addColorStop(0, "#0f172a");
+      grad.addColorStop(1, "#1e3a8a");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, totalW, bannerH);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `bold ${Math.round(22 * scale)}px ${fontFamily}`;
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "left";
+      ctx.fillText(`📊 ${projName}`, Math.round(20 * scale), stackBannerLegend ? Math.round(bannerH * 0.25) : Math.round(bannerH * 0.34));
+
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = `600 ${Math.round(14 * scale)}px ${fontFamily}`;
+      ctx.fillText(metaText, Math.round(20 * scale), stackBannerLegend ? Math.round(bannerH * 0.56) : Math.round(bannerH * 0.73));
+
+      ctx.font = `bold ${Math.round(13 * scale)}px ${fontFamily}`;
+      const boxSize = Math.round(14 * scale);
+      if (stackBannerLegend) {
+        let lx = Math.round(20 * scale);
+        const ly = Math.round(bannerH * 0.83);
+        PHASE_LIST.forEach((ph) => {
+          ctx.fillStyle = phaseColors[ph];
+          ctx.fillRect(lx, Math.round(ly - boxSize / 2), boxSize, boxSize);
+          lx += boxSize + Math.round(6 * scale);
+          ctx.fillStyle = "#f8fafc";
+          ctx.textAlign = "left";
+          ctx.fillText(ph, lx, ly);
+          lx += ctx.measureText(ph).width + Math.round(18 * scale);
+        });
+      } else {
+        let legendX = totalW - Math.round(24 * scale);
+        for (let i = PHASE_LIST.length - 1; i >= 0; i--) {
+          const ph = PHASE_LIST[i];
+          const tw = ctx.measureText(ph).width;
+          legendX -= tw;
+          ctx.fillStyle = "#f8fafc";
+          ctx.textAlign = "left";
+          ctx.fillText(ph, legendX, Math.round(bannerH * 0.5));
+          legendX -= (boxSize + Math.round(6 * scale));
+          ctx.fillStyle = phaseColors[ph];
+          ctx.fillRect(legendX, Math.round(bannerH * 0.5 - boxSize / 2), boxSize, boxSize);
+          legendX -= Math.round(18 * scale);
+        }
+      }
+
+      ctx.fillStyle = "#e2e8f0";
+      ctx.fillRect(0, contentTop, tableW, tableHeaderH);
+
+      let curColX = 0;
+      cols.forEach((col) => {
+        ctx.fillStyle = "#1e293b";
+        ctx.font = `bold ${Math.round(fs * 0.88)}px ${fontFamily}`;
+        ctx.textAlign = "center";
+        ctx.fillText(col.title, curColX + col.w / 2, contentTop + tableHeaderH / 2);
+
+        ctx.strokeStyle = "#cbd5e1";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(curColX + col.w, contentTop);
+        ctx.lineTo(curColX + col.w, bodyTop + bodyHeight);
+        ctx.stroke();
+
+        curColX += col.w;
+      });
+
+      const { topSegments, botSegments } = buildTimelineSegments(timelineStart, totalDays);
+      ctx.fillStyle = "#e2e8f0";
+      ctx.fillRect(tableW, contentTop, ganttW, topHeaderH);
+      ctx.fillStyle = "#f8fafc";
+      ctx.fillRect(tableW, contentTop + topHeaderH, ganttW, botHeaderH);
+
+      let tx = tableW;
+      topSegments.forEach((seg) => {
+        const w = seg.days * dayWidth;
+        ctx.fillStyle = "#1e293b";
+        ctx.font = `bold ${Math.round(fs * 0.84)}px ${fontFamily}`;
+        ctx.textAlign = "center";
+        ctx.fillText(seg.label, tx + w / 2, contentTop + topHeaderH / 2, Math.max(10, w - 4));
+        ctx.strokeStyle = "#cbd5e1";
+        ctx.beginPath();
+        ctx.moveTo(tx + w, contentTop);
+        ctx.lineTo(tx + w, contentTop + topHeaderH);
+        ctx.stroke();
+        tx += w;
+      });
+
+      let bx = tableW;
+      botSegments.forEach((seg) => {
+        const w = seg.days * dayWidth;
+        if (seg.isWeekend && viewMode === "day") {
+          ctx.fillStyle = "#fff1f2";
+          ctx.fillRect(bx, contentTop + topHeaderH, w, botHeaderH);
+          ctx.fillStyle = "rgba(254, 226, 226, 0.35)";
+          ctx.fillRect(bx, bodyTop, w, bodyHeight);
+        }
+        ctx.fillStyle = seg.isWeekend ? "#e11d48" : "#475569";
+        ctx.font = `600 ${Math.round(fs * 0.76)}px ${fontFamily}`;
+        ctx.textAlign = "center";
+        ctx.fillText(seg.label, bx + w / 2, contentTop + topHeaderH + botHeaderH / 2, Math.max(8, w - 2));
+
+        ctx.strokeStyle = "#e2e8f0";
+        ctx.beginPath();
+        ctx.moveTo(bx + w, contentTop + topHeaderH);
+        ctx.lineTo(bx + w, bodyTop + bodyHeight);
+        ctx.stroke();
+        bx += w;
+      });
+
+      ctx.strokeStyle = "#64748b";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, bodyTop);
+      ctx.lineTo(totalW, bodyTop);
+      ctx.stroke();
+
+      const exportCoords = new Map();
+
+      rowMetrics.forEach((rm) => {
+        const { t, idx, ry, rowH, cy, wbsLines, nameLines, isOverdue } = rm;
+
+        if (idx % 2 === 1) {
+          ctx.fillStyle = "rgba(248, 250, 252, 0.7)";
+          ctx.fillRect(0, ry, tableW, rowH);
+        }
+
+        let cx = 0;
+        cols.forEach((col) => {
+          if (col.isPhase) {
+            const pCol = phaseColors[t.phase] || "#2563eb";
+            const padX = Math.round(6 * scale);
+            const badgeH = Math.min(rowH - Math.round(10 * scale), Math.round(fs * 1.95));
+            const badgeY = ry + (rowH - badgeH) / 2;
+
+            ctx.fillStyle = hexToRgba(pCol, 0.15);
+            ctx.beginPath();
+            ctx.roundRect(cx + padX, badgeY, col.w - padX * 2, badgeH, 5);
+            ctx.fill();
+
+            ctx.fillStyle = pCol;
+            ctx.font = `bold ${Math.round(fs * 0.84)}px ${fontFamily}`;
+            ctx.textAlign = "center";
+            ctx.fillText(col.val(t), cx + col.w / 2, cy);
+          } else if (col.key === "name") {
+            ctx.fillStyle = "#0f172a";
+            ctx.font = `${fs}px ${fontFamily}`;
+            ctx.textAlign = "left";
+            const blockH = nameLines.length * nameLineH;
+            const startY = ry + (rowH - blockH) / 2 + nameLineH / 2;
+            nameLines.forEach((line, lIdx) => {
+              ctx.fillText(line, cx + cellPadX, startY + lIdx * nameLineH);
+            });
+          } else if (col.key === "wbs") {
+            ctx.fillStyle = "#0f172a";
+            ctx.font = `${fs}px ${fontFamily}`;
+            ctx.textAlign = "center";
+            const blockH = wbsLines.length * nameLineH;
+            const startY = ry + (rowH - blockH) / 2 + nameLineH / 2;
+            wbsLines.forEach((line, lIdx) => {
+              ctx.fillText(line, cx + col.w / 2, startY + lIdx * nameLineH);
+            });
+          } else {
+            const text = col.val(t);
+            ctx.fillStyle = col.isEnd && isOverdue ? "#dc2626" : "#0f172a";
+            ctx.font = `${col.isEnd && isOverdue ? "bold " : ""}${fs}px ${fontFamily}`;
+            ctx.textAlign = "center";
+            ctx.fillText(text, cx + col.w / 2, cy, col.w - Math.round(8 * scale));
+          }
+          cx += col.w;
+        });
+
+        ctx.strokeStyle = "#cbd5e1";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, ry + rowH);
+        ctx.lineTo(totalW, ry + rowH);
+        ctx.stroke();
+
+        exportCoords.set(t.id, rm);
+      });
+
+      ctx.strokeStyle = "#64748b";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(tableW, contentTop);
+      ctx.lineTo(tableW, bodyTop + bodyHeight);
+      ctx.stroke();
+
+      ctx.strokeStyle = "#64748b";
+      ctx.fillStyle = "#64748b";
+      ctx.lineWidth = Math.max(1.5, 1.5 * scale);
+      rowMetrics.forEach((dst) => {
+        const predIds = String(dst.t.preds || "")
+          .split(/[,;，；\s]+/)
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => !isNaN(n) && exportCoords.has(n));
+
+        predIds.forEach((pid) => {
+          const src = exportCoords.get(pid);
+          const x1 = Math.min(totalW - 3, src.x2);
+          const y1 = src.cy;
+          const x2 = dst.x1;
+          const y2 = dst.cy;
+          const detourY = y2 >= y1
+            ? (src.ry + src.rowH - Math.round(4 * scale))
+            : (src.ry + Math.round(4 * scale));
+
+          ctx.beginPath();
+          if (x2 >= x1 + 12) {
+            const midX = x1 + 8;
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(midX, y1);
+            ctx.lineTo(midX, y2);
+            ctx.lineTo(x2, y2);
+          } else {
+            const outX = Math.min(totalW - 3, x1 + 8);
+            const inX = Math.max(tableW + 3, x2 - 10);
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(outX, y1);
+            ctx.lineTo(outX, detourY);
+            ctx.lineTo(inX, detourY);
+            ctx.lineTo(inX, y2);
+            ctx.lineTo(x2, y2);
+          }
+          ctx.stroke();
+
+          const aSize = Math.round(5 * scale);
+          ctx.beginPath();
+          ctx.moveTo(x2, y2);
+          ctx.lineTo(x2 - aSize * 1.4, y2 - aSize * 0.8);
+          ctx.lineTo(x2 - aSize * 1.4, y2 + aSize * 0.8);
+          ctx.closePath();
+          ctx.fill();
+        });
+      });
+
+      rowMetrics.forEach((rm) => {
+        const { t, x1, x2, bw, cy, effectiveBarH, barZone, barLabelLines, isOverdue } = rm;
+        const by = cy - effectiveBarH / 2;
+
+        ctx.fillStyle = isOverdue ? "#dc2626" : (phaseColors[t.phase] || "#2563eb");
+        ctx.beginPath();
+        ctx.roundRect(x1, by, bw, effectiveBarH, 5);
+        ctx.fill();
+
+        ctx.font = `bold ${Math.round(fs * 0.84)}px ${fontFamily}`;
+        const lblBlockH = barLabelLines.length * barLabelLineH;
+        const lblStartY = cy - lblBlockH / 2 + barLabelLineH / 2;
+
+        if (barZone === "right") {
+          ctx.fillStyle = isOverdue ? "#dc2626" : "#1e293b";
+          ctx.textAlign = "left";
+          barLabelLines.forEach((line, lIdx) => {
+            ctx.fillText(line, x2 + Math.round(7 * scale), lblStartY + lIdx * barLabelLineH);
+          });
+        } else if (barZone === "inside") {
+          ctx.fillStyle = "#ffffff";
+          ctx.textAlign = "left";
+          barLabelLines.forEach((line, lIdx) => {
+            ctx.fillText(line, x1 + Math.round(7 * scale), lblStartY + lIdx * barLabelLineH);
+          });
+        } else {
+          ctx.fillStyle = isOverdue ? "#dc2626" : "#1e293b";
+          ctx.textAlign = "right";
+          barLabelLines.forEach((line, lIdx) => {
+            ctx.fillText(line, x1 - Math.round(7 * scale), lblStartY + lIdx * barLabelLineH);
+          });
+        }
+      });
+
+      const startLineX = tableW + diffDays(timelineStart, projectStart) * dayWidth;
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      if (startLineX >= tableW && startLineX <= totalW) {
+        ctx.strokeStyle = "#16a34a";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(startLineX, bodyTop);
+        ctx.lineTo(startLineX, bodyTop + bodyHeight);
+        ctx.stroke();
+      }
+
+      const deadlineX = totalW - 2;
+      ctx.strokeStyle = "#dc2626";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(deadlineX, bodyTop);
+      ctx.lineTo(deadlineX, bodyTop + bodyHeight);
+      ctx.stroke();
+      ctx.restore();
+
+      const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+      const ext = format === "jpeg" ? "jpg" : "png";
+      const dataUrl = canvas.toDataURL(mimeType, 0.95);
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `${projName}_甘特圖_${currentFontSize}px.${ext}`;
+      link.click();
+      showToast(`🖼️ 已匯出 ${ext.toUpperCase()} 高解析度甘特圖！`);
+    }
+
+    // =========================================================
+    // 13. 同步捲軸、左右雙欄寬度拖曳與初始化載入
+    // =========================================================
+    function initSyncAndResizer() {
+      const wbsPane = document.getElementById("wbsPane");
+      const ganttPane = document.getElementById("ganttPane");
+      let syncingLeft = false;
+      let syncingRight = false;
+
+      wbsPane.addEventListener("scroll", () => {
+        if (syncingLeft) { syncingLeft = false; return; }
+        syncingRight = true;
+        ganttPane.scrollTop = wbsPane.scrollTop;
+      });
+
+      ganttPane.addEventListener("scroll", () => {
+        if (syncingRight) { syncingRight = false; return; }
+        syncingLeft = true;
+        wbsPane.scrollTop = ganttPane.scrollTop;
+      });
+
+      const resizer = document.getElementById("paneResizer");
+      const workspace = document.getElementById("workspace");
+      resizer.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        resizer.classList.add("dragging");
+
+        function onMove(ev) {
+          const rect = workspace.getBoundingClientRect();
+          const newWidth = Math.max(320, Math.min(rect.width * 0.78, ev.clientX - rect.left));
+          wbsPane.style.width = `${newWidth}px`;
+        }
+
+        function onUp() {
+          resizer.classList.remove("dragging");
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        }
+
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      });
+
+      document.getElementById("templateSelect").addEventListener("change", (e) => {
+        loadTemplate(e.target.value);
+      });
+    }
+
+    function loadTemplate(key) {
+      const tpl = TEMPLATES[key];
+      if (!tpl) return;
+      document.getElementById("projectName").value = tpl.projectName;
+      document.getElementById("awardDate").value = tpl.awardDate;
+      document.getElementById("startOffset").value = tpl.startOffset;
+      document.getElementById("contractDays").value = tpl.contractDays;
+      tasks = JSON.parse(JSON.stringify(tpl.tasks));
+      recalcAndRender();
+    }
+
+    function renderAll() {
+      updateSummaryBadges();
+      renderWBSTable();
+      renderGantt();
+    }
+
+    // 啟動系統
+    window.addEventListener("DOMContentLoaded", () => {
+      renderPhaseColorPickers();
+      initSyncAndResizer();
+      loadTemplate("days120");
+      setFontSize(16);
+    });
+  </script>
+</body>
+</html>
+```
